@@ -1,0 +1,53 @@
+# Bytecode files - optimized files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+*.Python
+
+# Virtual environment
+venv/
+env/
+.env/
+virtualenv/
+ENV/
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.iml
+
+# Build and distribution files
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Flask specific ignores
+instance/
+*.sqlite3
+
+# Log files
+*.log
+*.out
+*err
+
+# Docker specific ignores
+*.pid
+*.tar
+Dockerfile~
+docker-compose.override.yml
+
+
+# Editor backup files
+*.bak, *.swp
+
+# pytest cache
+.pytest_cache/
+
+# System files
+.DS_Store
+Thumbs.db
