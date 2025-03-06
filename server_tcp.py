@@ -26,7 +26,7 @@ class Server:
         # 1. Create a socket object
         print(f"[{self.SERVER}]: Creating the socket ...")
         self.server_socket = socket.socket(socket.AF_INET,
-                                           socket.SOCK_STREAM)
+                                           socket.SOCK_STREAM) # Protocol: TCP
         #self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         # 2. Bind the socket to an address and port
@@ -93,4 +93,4 @@ if __name__ == '__main__':
 
     server = Server(ip, port).start_server()
 
-    # client started waiting till client connect it
+    # server started waiting till client connects it
