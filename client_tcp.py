@@ -20,9 +20,9 @@ class Client:
         self.CLIENT: Final[str] = "CLIENT"
         self.client_socket = None
 
-        self.connect_client()
+        self.connect()
 
-    def connect_client(self):
+    def connect(self):
         # 1. create client socket
         print(f"[{self.CLIENT}]: Creating the socket ...")
         self.client_socket = socket.socket(socket.AF_INET,     # this means we use protocol IP (our socket will expect to connect between 2 IP addresses
@@ -33,21 +33,24 @@ class Client:
         print(f"[{self.CLIENT}]: Creating the Connection (=connecting the socket to) with ip: {self.ip}, port: {self.port} ...")
         self.client_socket.connect((self.ip, self.port))
 
-    def send_message(self, message):
+    def send(self, message):
+        if not message:
+            print(f"[{self.CLIENT}]: Empty message is ignored")
+            return
         # 3. send data to the server
-        print(f"[{self.CLIENT}]: Client will send message: {message} to Server ..")
+        print(f"[{self.CLIENT}]: message: {message} to Server ..")
         self.client_socket.send(message.encode())
         print(f"[{self.CLIENT}]: Message was sent")
         # 4. Client waits to get the answer from the server
         # we need to define MAX bytes we allow to extract from the socket - here we say max 1024 bytes (1K) if will be less ok
-        print(f"[{self.CLIENT}]: waiting to get answer from the server ...")
+        print(f"[{self.CLIENT}]: Waiting for response from the server ...")
         received_data = self.client_socket.recv(self.MAX_DATA_SIZE).decode()
-        print(f"[{self.CLIENT}]: Received data from the server: <{received_data}>")
+        print(f"[{self.CLIENT}]: Received message from the server: <{received_data}>")
 
-    def disconnect_client(self):
-        print(f"[{self.CLIENT}]: Client is closing the connection ....")
+    def disconnect(self):
+        print(f"[{self.CLIENT}]: Closing the SOCKET (connection) ....")
         self.client_socket.close()
-        print(f"[{self.CLIENT}]: Connection is closed")
+        print(f"[{self.CLIENT}]: SOCKET (connection) is closed")
 
 
 # I added here a main just in case I wish to run the client directly and not from simpl_client_server_app.py
@@ -56,13 +59,14 @@ if __name__ == '__main__':
     port: Final[int] = 8820
 
     client = Client(ip, port)
+
     while True:
-        message = input("Enter message (empty message to exit):").rstrip()
-        if not message:
-            print(f"User did not enter message, Client will disconnect ")
+        message = input("Please enter message: ").rstrip()
+        client.send(message)
+        if message == 'q':
             break
-        print(f"Message to send to server: {message}")
-        client.send_message(message)
-    client.disconnect_client()
+
+    print(f"Client shutting down ")
+    client.disconnect()
 
 

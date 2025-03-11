@@ -1,3 +1,5 @@
+import multiprocessing
+import queue
 import socket
 from typing import Final # makes my types be final without ability to change their type
 
@@ -13,16 +15,23 @@ class Server:
     ############################################################################################
 
     def __init__(self, ip, port):
-        self.ip: Final[str] = "127.0.0.1" if not ip else ip
-        self.port: Final[int] = 8820 if not port else port
+        self.IP: Final[str] = "127.0.0.1" if not ip else ip
+        self.PORT: Final[int] = 8820 if not port else port
 
         self.MAX_CONNECTIONS: Final[int] = 1
         self.MAX_DATA_SIZE: Final[int] = 1024 # 1KB
         self.SERVER: Final[str] = "SERVER"
         self.client_socket = None
         self.server_socket = None
+        self.client_messages_queue = multiprocessing.Queue()
 
-    def start_server(self):
+    def start(self):
+        """
+        Start the server, will create 2 process:
+        1. that listen to the socket + receives the messages from a client and stores in the queue
+        2. that listens on the queue to the new message, retrieve and print it + add to SQL DB
+        :return: None
+        """
         # 1. Create a socket object
         print(f"[{self.SERVER}]: Creating the socket ...")
         self.server_socket = socket.socket(socket.AF_INET,
@@ -30,8 +39,8 @@ class Server:
         #self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         # 2. Bind the socket to an address and port
-        print(f"[{self.SERVER}]: Connecting the socket to ip: {self.ip}, port: {self.port} ...")
-        self.server_socket.bind((self.ip, self.port))
+        print(f"[{self.SERVER}]: Connecting the socket to ip: {self.IP}, port: {self.PORT} ...")
+        self.server_socket.bind((self.IP, self.PORT))
 
         # 3. This method is actually puts Server's socket into listening mode, it is not blocking func
         # OS knows that only 1 connection is allowed, the rest will be rejected
@@ -49,32 +58,57 @@ class Server:
         self.client_socket, client_address = self.server_socket.accept()
         print(f"[{self.SERVER}]: Connection is established with client ip address: {client_address}, type: {type(self.client_socket)}")
 
-        # 5. Server will be stacked waiting to extract data fromm the client socket, till the data is received the server is stacked
+        # 5. create 2 different procs to handle receive and process of the messages from a client
+        print(f"[{self.SERVER}]: Creating 2 parallel server activities: receive_client_messages, process_client_messages ...")
+        receiver_proc = multiprocessing.Process(target=self._receive_messages)#, args=(self.client_socket, self.client_messages_queue))
+        processor_proc = multiprocessing.Process(target=self._process_messages)#, args=(self. client_socket, self.client_messages_queue))
+
+        # 6. start the activities
+        print(f"[{self.SERVER}]: Starting these activities to run")
+        receiver_proc.start()
+        processor_proc.start()
+
+        receiver_proc.join()
+        processor_proc.join()
+
+        receiver_proc.close()
+        processor_proc.close()
+        print(f"[{self.SERVER}]: Server shut down.")
+
+    def _receive_messages(self):
+        """
+        Looping the server socket, once new message entered, retrieve and handle: insert into internal queue for further respond
+        :return: None
+        """
         while True:
+            print(f"[{self.SERVER}]: process 'receive & store' running ...")
             try:
-                print(f"[{self.SERVER}]: Try to receive a data from a client ...")
+                # Several scenarios can be here: --------------------------------------------------------------------------------------------------------------------
+                # 1: if no incoming message (from a client), server is stack (blocked) and keeps on waiting
+                # 2: if incoming message is arrived, the recv() is releases and incoming message can be handled
+                # 3: if client closed connection properly (calls close() on its end), the recv() will be released on Server's side
+                #    and will return an empty string - Server will get the empty str and will close both (server + client) connection properly
+                # 4: if client connection was forcefully disconnected, recv() will return exception that we will catch,
+                #    still the Server will close both (server + client) connection properly
                 # --------------------------------------------------------------------------------------------------------------------------------------------------
-                # option_1: if no data, server is waiting, it is blocked
-                # option_2: if data arrived recv() is releases and data is handled
-                # option_3: if client closed connection properly (calls close() on its end) the recv() will return empty string that is why I check for empty string
-                # option_4: if client connection was forcefully disconnected, recv() will return exception tha twe will catch
-                # --------------------------------------------------------------------------------------------------------------------------------------------------
-                data = self.client_socket.recv(self.MAX_DATA_SIZE).decode()
-                print(f"[{self.SERVER}]: Received data from Client: <{data}>, lets check the content ...")
-
+                data = self.client_socket.recv(self.MAX_DATA_SIZE) # its bad idea to do: data = self.client_socket.recv(self.MAX_DATA_SIZE).decode() as a data can be empty
                 if not data:
-                    print(f"[{self.SERVER}]: CHECK: Received empty Data from client - means Client closed correctly its connection")
+                    print(f"[{self.SERVER}] empty message - is ignored")
+                    continue
+                    # break # consider here to close the DB
+                elif data.decode() == 'q':
+                    message_from_client = data.decode('utf-8')
+                    print(f"[{self.SERVER}]: Received message from a Client: <{message_from_client}>")
+                    self.client_messages_queue.put(message_from_client)
                     break
-                else:
-                    # 6. Send a response back to the client
-                    resp_message = "Hello, client! I received your message."
-                    print(f"[{self.SERVER}]: Sends back this answer to client: {resp_message}")
-                    self.client_socket.send(resp_message.encode())
-                    print(f"[{self.SERVER}]: Message sent ..")
-
+                # all other messages enter into the queue
+                message_from_client = data.decode('utf-8')
+                print(f"[{self.SERVER}]: Received message from a Client: <{message_from_client}>")
+                self.client_messages_queue.put(message_from_client)
+                print(f"[{self.SERVER}]: Entered into Server's internal storage")
             except ConnectionAbortedError as ee:
-                print(f"[{self.SERVER}]: ### Client connection forcefully terminated, error:\n {ee} ###")
-                break
+                print(f"[{self.SERVER}]: ### Receive error: Client connection forcefully terminated, error:\n {ee} ###")
+                break # consider here to close the DB
 
         # 7. Server closes the connection - in any way either if client disconnected properly or if client's connection forcefully closed
         # If the server doesn’t call close(), the socket could remain in a "half-closed" state
@@ -82,15 +116,54 @@ class Server:
         # Server MUST close Clients connection and his own Server connection according to the protocol
         print(f"[{self.SERVER}]: Closing Client socket (connection) ")
         self.client_socket.close()
-
         print(f"[{self.SERVER}]: Closing Server socket (connection) ")
         self.server_socket.close()
+        print(f"[{self.SERVER}]: processes finished !!!")
+
+    def _process_messages(self) -> None:
+        """
+        Looping the server queue, once new message entered, retrieve and respond
+        :return:
+        """
+        tmp_message_store = {}
+        message_id = 0
+
+        while True:
+            print(f"[{self.SERVER}]: process 'retrieve & respond' running ...")
+            try:
+                # .get() is for retrieve message from queue
+                # default it is blocking function but we can set a time parameter to limit the blocking time to 1 sec
+                # If no message arrives within 1 second, it raises queue.Empty, which we're catching to simply continue the loop
+
+                message = self.client_messages_queue.get(timeout=8)
+
+                # check message, if empty then finish
+                if message == 'q':
+                    print(f"[{self.SERVER}]: extracted message = {message}, finish polling the queue")
+                    break  # consider here to close the DB
+                tmp_message_store[message_id] = message
+                print(f"[{self.SERVER}]: Stored message {message_id}: {message}")
+
+                # respond to a client
+                resp_message = "Hello, client! I received your message."
+                print(f"[{self.SERVER}]: Sending back the respond message to client: {message_id}.{resp_message}")
+                self.client_socket.sendall(resp_message.encode())
+                message_id += 1
+                print(f"[{self.SERVER}]: Message sent !")
+
+            except queue.Empty:
+                print(f"[{self.SERVER}]: yet found any message in queue, keep polling the queue ...")
+                continue
+            except Exception as e:
+                print(f"[{self.SERVER}]: Queue processing error: {e} ###")
+                break
+        print(f"[{self.SERVER}]: processes finished !!!")
+
+
 
 # I added here a main just in case I wish to run the server directly and not from simpl_client_server_app.py
 if __name__ == '__main__':
     ip: Final[str] = "127.0.0.1"
     port: Final[int] = 8820
 
-    server = Server(ip, port).start_server()
-
-    # server started waiting till client connects it
+    server = Server(ip, port).start() # server started waiting till client connects it
