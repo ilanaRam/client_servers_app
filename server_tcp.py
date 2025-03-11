@@ -1,4 +1,5 @@
-import multiprocessing
+#import multiprocessing
+from threading import Thread
 import queue
 import socket
 from typing import Final # makes my types be final without ability to change their type
@@ -23,7 +24,8 @@ class Server:
         self.SERVER: Final[str] = "SERVER"
         self.client_socket = None
         self.server_socket = None
-        self.client_messages_queue = multiprocessing.Queue()
+        self.client_messages_queue = queue.Queue() # multiprocessing.Queue() <-- this is good when we used processing
+        self.connection_store = {}
 
     def start(self):
         """
@@ -51,28 +53,31 @@ class Server:
         # print(f"[{self.SERVER}]: configured not to stack and wait till the client is connected")
         # self.server_socket.setblocking(False)
 
-        # 4. Server is blocked (stack, pauses, waiting) till first Client (single client) will connect. Server will wait forever for the connection
+        # 4. Server is blocked (stack, pauses, waiting) till first Client (single client) connection. Server will wait forever for the connection
         # first connected client will get the Server from stack, will be returned Client connection details: client_ip, client_socket (only socket actually in use)
-        # then server will be stacked waiting for data
+        # then server will be stacked waiting for messages from connected client
         print(f"[SERVER]: is paused until client data is arrived")
         self.client_socket, client_address = self.server_socket.accept()
         print(f"[{self.SERVER}]: Connection is established with client ip address: {client_address}, type: {type(self.client_socket)}")
 
         # 5. create 2 different procs to handle receive and process of the messages from a client
         print(f"[{self.SERVER}]: Creating 2 parallel server activities: receive_client_messages, process_client_messages ...")
-        receiver_proc = multiprocessing.Process(target=self._receive_messages)#, args=(self.client_socket, self.client_messages_queue))
-        processor_proc = multiprocessing.Process(target=self._process_messages)#, args=(self. client_socket, self.client_messages_queue))
+        # receiver_proc = multiprocessing.Process(target=self._receive_messages)#, args=(self.client_socket, self.client_messages_queue))
+        # processor_proc = multiprocessing.Process(target=self._process_messages)#, args=(self. client_socket, self.client_messages_queue))
+
+        receiver_thread = Thread(target=self._receive_messages)
+        processor_thread = Thread(target=self._process_messages)
 
         # 6. start the activities
         print(f"[{self.SERVER}]: Starting these activities to run")
-        receiver_proc.start()
-        processor_proc.start()
+        receiver_thread.start()
+        processor_thread.start()
 
-        receiver_proc.join()
-        processor_proc.join()
+        receiver_thread.join()
+        processor_thread.join()
 
-        receiver_proc.close()
-        processor_proc.close()
+        # receiver_thread.close()
+        # processor_thread.close()
         print(f"[{self.SERVER}]: Server shut down.")
 
     def _receive_messages(self):
@@ -96,37 +101,33 @@ class Server:
                     print(f"[{self.SERVER}] empty message - is ignored")
                     continue
                     # break # consider here to close the DB
-                elif data.decode() == 'q':
-                    message_from_client = data.decode('utf-8')
-                    print(f"[{self.SERVER}]: Received message from a Client: <{message_from_client}>")
-                    self.client_messages_queue.put(message_from_client)
-                    break
-                # all other messages enter into the queue
+
                 message_from_client = data.decode('utf-8')
                 print(f"[{self.SERVER}]: Received message from a Client: <{message_from_client}>")
                 self.client_messages_queue.put(message_from_client)
-                print(f"[{self.SERVER}]: Entered into Server's internal storage")
+
+                if data.decode() == 'q':
+                    break
             except ConnectionAbortedError as ee:
                 print(f"[{self.SERVER}]: ### Receive error: Client connection forcefully terminated, error:\n {ee} ###")
                 break # consider here to close the DB
 
-        # 7. Server closes the connection - in any way either if client disconnected properly or if client's connection forcefully closed
-        # If the server doesn’t call close(), the socket could remain in a "half-closed" state
-        # where resources are still being held open even though the client is no longer connected.
-        # Server MUST close Clients connection and his own Server connection according to the protocol
-        print(f"[{self.SERVER}]: Closing Client socket (connection) ")
-        self.client_socket.close()
-        print(f"[{self.SERVER}]: Closing Server socket (connection) ")
-        self.server_socket.close()
-        print(f"[{self.SERVER}]: processes finished !!!")
+        # # 7. Server closes the connection - in any way either if client disconnected properly or if client's connection forcefully closed
+        # # If the server doesn’t call close(), the socket could remain in a "half-closed" state
+        # # where resources are still being held open even though the client is no longer connected.
+        # # Server MUST close Clients connection and his own Server connection according to the protocol
+        # print(f"[{self.SERVER}]: Closing Client socket (connection) ")
+        # self.client_socket.close()
+        # print(f"[{self.SERVER}]: Closing Server socket (connection) ")
+        # self.server_socket.close()
+        # print(f"[{self.SERVER}]: processes finished !!!")
 
     def _process_messages(self) -> None:
         """
         Looping the server queue, once new message entered, retrieve and respond
         :return:
         """
-        tmp_message_store = {}
-        message_id = 0
+        index = 0
 
         while True:
             print(f"[{self.SERVER}]: process 'retrieve & respond' running ...")
@@ -136,19 +137,19 @@ class Server:
                 # If no message arrives within 1 second, it raises queue.Empty, which we're catching to simply continue the loop
 
                 message = self.client_messages_queue.get(timeout=8)
+                self.connection_store.setdefault(index, []).append(message)
 
                 # check message, if empty then finish
                 if message == 'q':
                     print(f"[{self.SERVER}]: extracted message = {message}, finish polling the queue")
                     break  # consider here to close the DB
-                tmp_message_store[message_id] = message
-                print(f"[{self.SERVER}]: Stored message {message_id}: {message}")
 
                 # respond to a client
                 resp_message = "Hello, client! I received your message."
-                print(f"[{self.SERVER}]: Sending back the respond message to client: {message_id}.{resp_message}")
+                print(f"[{self.SERVER}]: Sending response message back to client: {index}.{resp_message}")
                 self.client_socket.sendall(resp_message.encode())
-                message_id += 1
+                self.connection_store.setdefault(index, []).append(resp_message)
+                index += 1
                 print(f"[{self.SERVER}]: Message sent !")
 
             except queue.Empty:
@@ -159,11 +160,33 @@ class Server:
                 break
         print(f"[{self.SERVER}]: processes finished !!!")
 
+    def disconnect(self):
+        # 7. Server closes the connection - in any way either if client disconnected properly or if client's connection forcefully closed
+        # If the server doesn’t call close(), the socket could remain in a "half-closed" state
+        # where resources are still being held open even though the client is no longer connected.
+        # Server MUST close Clients connection and his own Server connection according to the protocol
+        print(f"[{self.SERVER}]: Closing Client socket (connection) ")
+        self.client_socket.close()
+        print(f"[{self.SERVER}]: Closing Server socket (connection) ")
+        self.server_socket.close()
+        print(f"[{self.SERVER}]: processes finished !!!")
 
+    def print_received_messages(self):
+        print(f"\n[{self.SERVER}]: All the messages that were sent: Client -> Server\n"
+              f"--------------------------------------------------------------------")
+        print(f"the len of the store is: {len(self.connection_store)}")
+        for index, messages_list in self.connection_store.items():
+            print(f"[{self.SERVER}]: [{index}]: {messages_list}")
 
 # I added here a main just in case I wish to run the server directly and not from simpl_client_server_app.py
 if __name__ == '__main__':
     ip: Final[str] = "127.0.0.1"
     port: Final[int] = 8820
 
-    server = Server(ip, port).start() # server started waiting till client connects it
+    server = Server(ip, port)
+    server.start()
+
+    print(f"Server shutting down ")
+    server.disconnect()
+
+    server.print_received_messages()
