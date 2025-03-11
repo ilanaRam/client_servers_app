@@ -39,7 +39,7 @@ class Client:
             return
         # 3. send data to the server
         print(f"[{self.CLIENT}]: message: {message} to Server ..")
-        self.client_socket.send(message.encode())
+        self.client_socket.sendall(message.encode())
         print(f"[{self.CLIENT}]: Message was sent")
         # 4. Client waits to get the answer from the server
         # we need to define MAX bytes we allow to extract from the socket - here we say max 1024 bytes (1K) if will be less ok
