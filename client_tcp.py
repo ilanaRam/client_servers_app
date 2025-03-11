@@ -1,3 +1,5 @@
+import multiprocessing
+import queue
 import socket
 from typing import Final # makes my types be final without ability to change their type
 
@@ -19,6 +21,8 @@ class Client:
         self.MAX_DATA_SIZE: Final[int] = 1024  # 1KB
         self.CLIENT: Final[str] = "CLIENT"
         self.client_socket = None
+        self.server_responses_queue = multiprocessing.Queue()
+        self.responses_store = {}
 
         self.connect()
 
@@ -33,18 +37,61 @@ class Client:
         print(f"[{self.CLIENT}]: Creating the Connection (=connecting the socket to) with ip: {self.ip}, port: {self.port} ...")
         self.client_socket.connect((self.ip, self.port))
 
+
+    def receive_loop(self):
+        message_id = 0
+
+        # receiving loop
+        while True:
+            try:
+                print(f"[{self.CLIENT}]: Waiting for response from the server ...")
+                # receive
+                received_data = self.client_socket.recv(self.MAX_DATA_SIZE) # we need to define MAX bytes we allow to extract from the socket - here we say max 1024 bytes (1K) if will be less ok
+                if not received_data:
+                    break
+                response_from_server = received_data.decode('utf-8')
+                print(f"[{self.CLIENT}]: Received message from the server: <{response_from_server}>")
+
+                self.responses_store.setdefault(message_id,[]).append(response_from_server)
+                message_id += 1
+            except:
+                break
+
+    def start(self):
+        """
+        Client works in a sequential manner - works like a chat:
+        1. GET message from user
+        2. SEND message to server
+        3. WAIT for response
+        4. SHOW received message
+        5. REPEAT
+        :return:
+        """
+        while True:
+            # GET
+            message = input("Please enter message: ").rstrip()
+            # check input
+            if not message:
+                print(f"[{self.CLIENT}]: Empty message is ignored")
+            else:
+            # SEND
+                self.send(message) # send any message to server (either 'q' or not, as message 'q' tels the server to finish)
+                if message == 'q':
+                    return
+                # WAIT + RECEIVE
+                self.receive()
+
     def send(self, message):
-        if not message:
-            print(f"[{self.CLIENT}]: Empty message is ignored")
-            return
-        # 3. send data to the server
-        print(f"[{self.CLIENT}]: message: {message} to Server ..")
+        # 3. actual sending of the data to the server
+        print(f"[{self.CLIENT}]: Sending message: {message} to Server ..")
         self.client_socket.sendall(message.encode())
         print(f"[{self.CLIENT}]: Message was sent")
-        # 4. Client waits to get the answer from the server
+
+    def receive(self):
+        # Client waits to get the answer from the server
         # we need to define MAX bytes we allow to extract from the socket - here we say max 1024 bytes (1K) if will be less ok
         print(f"[{self.CLIENT}]: Waiting for response from the server ...")
-        received_data = self.client_socket.recv(self.MAX_DATA_SIZE).decode()
+        received_data = self.client_socket.recv(self.MAX_DATA_SIZE).decode()  # blocking operation, client will not send next message before he got respond to the current message
         print(f"[{self.CLIENT}]: Received message from the server: <{received_data}>")
 
     def disconnect(self):
@@ -60,11 +107,8 @@ if __name__ == '__main__':
 
     client = Client(ip, port)
 
-    while True:
-        message = input("Please enter message: ").rstrip()
-        client.send(message)
-        if message == 'q':
-            break
+    # start sending (& receiving responds)
+    client.start()
 
     print(f"Client shutting down ")
     client.disconnect()

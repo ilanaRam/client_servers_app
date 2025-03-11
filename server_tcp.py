@@ -24,6 +24,7 @@ class Server:
         self.client_socket = None
         self.server_socket = None
         self.client_messages_queue = multiprocessing.Queue()
+        self.message_store = {}
 
     def start(self):
         """
@@ -125,7 +126,6 @@ class Server:
         Looping the server queue, once new message entered, retrieve and respond
         :return:
         """
-        tmp_message_store = {}
         message_id = 0
 
         while True:
@@ -141,7 +141,7 @@ class Server:
                 if message == 'q':
                     print(f"[{self.SERVER}]: extracted message = {message}, finish polling the queue")
                     break  # consider here to close the DB
-                tmp_message_store[message_id] = message
+                self.message_store[message_id] = message
                 print(f"[{self.SERVER}]: Stored message {message_id}: {message}")
 
                 # respond to a client
