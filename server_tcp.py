@@ -76,7 +76,7 @@ class Server:
         receiver_thread.join()
         processor_thread.join()
 
-        # receiver_thread.close()
+        # receiver_thread.close()  # no need to close threads (only processes) threads shares memory while processes are not
         # processor_thread.close()
         print(f"[{self.SERVER}]: Server shut down.")
 
