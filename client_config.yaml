@@ -1,0 +1,5 @@
+client:
+  ip_address: "127.0.0.1"
+  port: 8820
+  max_retries:  10
+  retry_delay:  2

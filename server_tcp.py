@@ -2,6 +2,7 @@
 from threading import Thread
 import queue
 import socket
+import yaml
 from typing import Final # makes my types be final without ability to change their type
 
 
@@ -15,17 +16,29 @@ class Server:
     # recv (blocking wait for Client data) -> return answer
     ############################################################################################
 
-    def __init__(self, ip, port):
-        self.IP: Final[str] = "127.0.0.1" if not ip else ip
-        self.PORT: Final[int] = 8820 if not port else port
+    def __init__(self):
+        self.SERVER: Final[str] = "SERVER"
+        # self.ip: Final[str] = "127.0.0.1" if not ip else ip
+        # self.port: Final[int] = 8820 if not port else port
 
         self.MAX_CONNECTIONS: Final[int] = 1
         self.MAX_DATA_SIZE: Final[int] = 1024 # 1KB
-        self.SERVER: Final[str] = "SERVER"
         self.client_socket = None
         self.server_socket = None
-        self.client_messages_queue = queue.Queue() # multiprocessing.Queue() <-- this is good when we used processing
-        self.connection_store = {}
+        self.client_messages_queue = queue.Queue() # this Q was created in context of the Server obj, therefore will leave also after thread will finish
+        self.connection_store = {}                 # multiprocessing.Queue() <-- this is good when we used processes and not threads
+
+        ip,port = self.init()
+        self.IP: Final[str] = ip # also possible to do: socket.gethostbyname(socket.gethostname()) if not ip else ip  # <---- this way we determine the local host address, this way -> we set it hard codded: "127.0.0.1" if not ip else ip
+        print(f"[{self.SERVER}]: Using IP: {self.IP}")
+
+        self.PORT: Final[int] = port # also possible to do: 8820 if not port else port
+        print(f"[{self.SERVER}]: Using PORT: {self.PORT}")
+
+    def init(self):
+        with open("server_config.yaml", "r") as yaml_file:
+            config = yaml.safe_load(yaml_file)
+            return config["server"]["ip_address"], config["server"]["port"]
 
     def start(self):
         """
@@ -41,7 +54,6 @@ class Server:
         #self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         # 2. Bind the socket to an address and port
-        print(f"[{self.SERVER}]: Connecting the socket to ip: {self.IP}, port: {self.PORT} ...")
         self.server_socket.bind((self.IP, self.PORT))
 
         # 3. This method is actually puts Server's socket into listening mode, it is not blocking func
@@ -180,10 +192,7 @@ class Server:
 
 # I added here a main just in case I wish to run the server directly and not from simpl_client_server_app.py
 if __name__ == '__main__':
-    ip: Final[str] = "127.0.0.1"
-    port: Final[int] = 8820
-
-    server = Server(ip, port)
+    server = Server()
     server.start()
 
     print(f"Server shutting down ")

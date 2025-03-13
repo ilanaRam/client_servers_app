@@ -1,5 +1,7 @@
 import socket
 from typing import Final # makes my types be final without ability to change their type
+import yaml
+import time
 
 
 class Client:
@@ -12,29 +14,56 @@ class Client:
     # here we will use ECHO Server that will always answer upon connect to it
     ############################################################################################
     def __init__(self, ip = None, port = None):
-        self.ip: Final[str] = "127.0.0.1" if not ip else ip
-        self.port: Final[int] = 8820 if not port else port
-
-        self.MAX_CONNECTIONS: Final[int] = 1
-        self.MAX_DATA_SIZE: Final[int] = 1024  # 1KB
         self.CLIENT: Final[str] = "CLIENT"
-        self.client_socket = None
+        # self.ip: Final[str] = "127.0.0.1" if not ip else ip
+        # self.port: Final[int] = 8820 if not port else port
 
+        self.MAX_DATA_SIZE: Final[int] = 1024  # 1KB
+        self.client_socket = None
         self.connection_store = {}
         self.index = 0
 
+        ip, port, max_retries, retry_delay = self.init()
+        self.IP: Final[str] =  ip  # also possible to do: socket.gethostbyname(socket.gethostname())  # <---- this way we determine the local host address, this way -> we set it hard codded: "127.0.0.1" if not ip else ip
+        print(f"[{self.CLIENT}]: Using IP: {self.IP}")
+
+        self.PORT: Final[int] = port # also possible to do: 8820 if not port else port
+        print(f"[{self.CLIENT}]: Using PORT: {self.PORT}")
+
+        self.max_retries = max_retries
+        print(f"[{self.CLIENT}]: Max number of connection retries: {self.max_retries}")
+
+        self.retry_delay = retry_delay
+        print(f"[{self.CLIENT}]: Delay between retries: {self.retry_delay}")
+
         self.connect()
 
+    def init(self):
+        with (open("client_config.yaml", "r") as yaml_file):
+            config = yaml.safe_load(yaml_file)
+            return config["client"]["ip_address"],\
+                   config["client"]["port"],\
+                   config["client"]["max_retries"],\
+                   config["client"]["retry_delay"]
+
     def connect(self):
-        # 1. create client socket
+        # 1. create client socket - this operation has nothing to do with Server (it doesnt requires a Server be connected)
         print(f"[{self.CLIENT}]: Creating the socket ...")
         self.client_socket = socket.socket(socket.AF_INET,     # this means we use protocol IP (our socket will expect to connect between 2 IP addresses
                                            socket.SOCK_STREAM) # this means we use protocol TCP (in charge of reliable connection)
-
-        # 2. connect socket to server (method connect() receives a tuple with (IP of the server, PORT of the server))
-        # because the fact that the client and the server are both on the same PC the ip is a local host address 127.0.0.1
-        print(f"[{self.CLIENT}]: Creating the Connection (=connecting the socket to) with ip: {self.ip}, port: {self.port} ...")
-        self.client_socket.connect((self.ip, self.port))
+        # 2. connect socket to server - !!! Server must be running before we run this operation !!!
+        for connect_attempt in range(1, self.max_retries + 1):
+            try:
+                print(f"[{self.CLIENT}]: Attempting to connect Server [{connect_attempt}], ip: {self.IP}, port: {self.PORT} ...")
+                self.client_socket.connect((self.IP, self.PORT))
+                print(f"[{self.CLIENT}]: Connected to the Server successffully !")
+                break
+            except (ConnectionRefusedError, socket.timeout):
+                print(f"[{self.CLIENT}]: Server not up yet, retrying in {self.retry_delay} seconds...")
+                time.sleep(self.retry_delay)
+        else:
+            print(f"[{self.CLIENT}]: Failed to connect to the Server after {self.max_retries} attempts ###")
+            exit(1)  # Exit if connection never succeeded
 
     def start(self):
         """
@@ -89,10 +118,7 @@ class Client:
 
 # I added here a main just in case I wish to run the client directly and not from simpl_client_server_app.py
 if __name__ == '__main__':
-    ip: Final[str] = "127.0.0.1"
-    port: Final[int] = 8820
-
-    client = Client(ip, port)
+    client = Client()
     client.start()
 
     print(f"Client shutting down ")
