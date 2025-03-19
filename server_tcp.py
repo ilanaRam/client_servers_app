@@ -24,13 +24,12 @@ class Server:
         # self.port: Final[int] = 8820 if not port else port
 
         self.MAX_CONNECTIONS: Final[int] = 1
-        self.MAX_DATA_SIZE: Final[int] = 1024 # 1KB
         self.client_socket = None
         self.server_socket = None
         self.client_messages_queue = queue.Queue() # this Q was created in context of the Server obj, therefore will leave also after thread will finish
         self.connection_store = {}                 # multiprocessing.Queue() <-- this is good when we used processes and not threads
 
-        ip,port = self.init()
+        ip, port, max_data_size = self.init()
         print(f"[{self.app}]: app is executed using the next params: ")
         self.IP: Final[str] = ip # also possible to do: socket.gethostbyname(socket.gethostname()) if not ip else ip  # <---- this way we determine the local host address, this way -> we set it hard codded: "127.0.0.1" if not ip else ip
         print(f"[{self.app}]: IP: {self.IP}")
@@ -38,10 +37,15 @@ class Server:
         self.PORT: Final[int] = port # also possible to do: 8820 if not port else port
         print(f"[{self.app}]: PORT: {self.PORT}")
 
+        self.MAX_DATA_SIZE = max_data_size
+        print(f"[{self.app}]: Max data size: {self.MAX_DATA_SIZE}")
+
     def init(self):
         with open("server_config.yaml", "r") as yaml_file:
             config = yaml.safe_load(yaml_file)
-            return config["server"]["ip_address"], config["server"]["port"]
+            return config["server"]["ip_address"],\
+                   config["server"]["port"], \
+                   config["server"]["max_data_size"]
 
     def start(self):
         """

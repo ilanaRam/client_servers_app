@@ -3,3 +3,4 @@ client:
   port: 8820
   max_retries:  10
   retry_delay:  2
+  max_data_size: 1024
