@@ -26,7 +26,7 @@ class Client:
 
         ip, port, max_retries, retry_delay, max_data_size = self.init()
         self.IP: Final[str] =  ip  # also possible to do: socket.gethostbyname(socket.gethostname())  # <---- this way we determine the local host address, this way -> we set it hard codded: "127.0.0.1" if not ip else ip
-        print(f"[{self.app}]: app is executed using the next params: ")
+        print(f"[{self.app}]: app is executed using the next parameters: ")
         print(f"[{self.app}]: IP: {self.IP}")
 
         self.PORT: Final[int] = port # also possible to do: 8820 if not port else port

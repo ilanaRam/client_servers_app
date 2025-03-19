@@ -30,7 +30,7 @@ class Server:
         self.connection_store = {}                 # multiprocessing.Queue() <-- this is good when we used processes and not threads
 
         ip, port, max_data_size = self.init()
-        print(f"[{self.app}]: app is executed using the next params: ")
+        print(f"[{self.app}]: app is executed using the next parameters: ")
         self.IP: Final[str] = ip # also possible to do: socket.gethostbyname(socket.gethostname()) if not ip else ip  # <---- this way we determine the local host address, this way -> we set it hard codded: "127.0.0.1" if not ip else ip
         print(f"[{self.app}]: IP: {self.IP}")
 
