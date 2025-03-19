@@ -41,7 +41,6 @@ instance/
 Dockerfile~
 docker-compose.override.yml
 
-
 # Editor backup files
 *.bak, *.swp
 
@@ -51,3 +50,8 @@ docker-compose.override.yml
 # System files
 .DS_Store
 Thumbs.db
+
+# Ignore SSL certificate and private key and certificates
+certs/
+*.pem
+
