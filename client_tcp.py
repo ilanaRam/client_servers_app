@@ -3,7 +3,7 @@ from typing import Final # makes my types be final without ability to change the
 import yaml
 import time
 import ssl
-import certs
+
 
 
 class Client:
@@ -20,14 +20,13 @@ class Client:
         # self.ip: Final[str] = "127.0.0.1" if not ip else ip
         # self.port: Final[int] = 8820 if not port else port
 
-        self.MAX_DATA_SIZE: Final[int] = 1024  # 1KB
         self.client_socket = None
         self.connection_store = {}
         self.index = 0
 
-        ip, port, max_retries, retry_delay = self.init()
+        ip, port, max_retries, retry_delay, max_data_size = self.init()
         self.IP: Final[str] =  ip  # also possible to do: socket.gethostbyname(socket.gethostname())  # <---- this way we determine the local host address, this way -> we set it hard codded: "127.0.0.1" if not ip else ip
-        print(f"[{self.app}]: app is executed using the next params: ")
+        print(f"[{self.app}]: app is executed using the next parameters: ")
         print(f"[{self.app}]: IP: {self.IP}")
 
         self.PORT: Final[int] = port # also possible to do: 8820 if not port else port
@@ -39,6 +38,9 @@ class Client:
         self.retry_delay = retry_delay
         print(f"[{self.app}]: Delay between retries: {self.retry_delay}")
 
+        self.MAX_DATA_SIZE = max_data_size
+        print(f"[{self.app}]: Max data size: {self.MAX_DATA_SIZE}")
+
         self.connect()
 
     def init(self):
@@ -47,7 +49,8 @@ class Client:
             return config["client"]["ip_address"],\
                    config["client"]["port"],\
                    config["client"]["max_retries"],\
-                   config["client"]["retry_delay"]
+                   config["client"]["retry_delay"], \
+                   config["client"]["max_data_size"]
 
     def connect(self):
         # 1. create client 'regular' socket - this operation has nothing to do with Server (it doesnt requires a Server be connected)
@@ -144,10 +147,7 @@ class Client:
 if __name__ == '__main__':
     client = Client()
     client.start()
-
-    print(f"Client shutting down ")
     client.disconnect()
-
     client.print_sent_messages()
 
 

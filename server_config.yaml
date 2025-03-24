@@ -1,3 +1,5 @@
 server:
   ip_address: "127.0.0.1"
   port: 8820
+  max_data_size: 1024
+  number_working_threads: 2
