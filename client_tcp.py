@@ -3,7 +3,7 @@ from typing import Final # makes my types be final without ability to change the
 import yaml
 import time
 import ssl
-import certs
+
 
 
 class Client:
@@ -147,10 +147,7 @@ class Client:
 if __name__ == '__main__':
     client = Client()
     client.start()
-
-    print(f"Client shutting down ")
     client.disconnect()
-
     client.print_sent_messages()
 
 

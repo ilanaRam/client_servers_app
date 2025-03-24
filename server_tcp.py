@@ -5,7 +5,9 @@ import socket
 import yaml
 from typing import Final # makes my types be final without ability to change their type
 import ssl
-import certs
+
+# required for multi client
+import select
 
 
 class Server:
@@ -27,7 +29,10 @@ class Server:
         self.client_socket = None
         self.server_socket = None
         self.client_messages_queue = queue.Queue() # this Q was created in context of the Server obj, therefore will leave also after thread will finish
-        self.connection_store = {}                 # multiprocessing.Queue() <-- this is good when we used processes and not threads
+        self.received_messages_store = {}                 # multiprocessing.Queue() <-- this is good when we used processes and not threads
+
+        # for multi client
+        self.client_sockets = []
 
         ip, port, max_data_size = self.init()
         print(f"[{self.app}]: app is executed using the next parameters: ")
@@ -55,9 +60,13 @@ class Server:
         :return: None
         """
         # 1. Create a socket object
-        print(f"\n\n[{self.app}]: Creating the 'regular' socket ...")
+        print(f"\n\n[{self.app}]: Creating the 'regular' TCP/IP socket ...")
         self.server_socket = socket.socket(socket.AF_INET,
                                            socket.SOCK_STREAM) # use protocol: TCP
+        # important (but optional) line - it tells os that port will be free right after server disconnect.
+        # Why? After server disconnects, os sets the port to the wait list for 60sec in case there will be late packets
+        # This means if we try to reconnect server to same port it will fail.
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         # 2. prepare secure context - setting up all the rules for secure communication
         # It helps Python know how to handle encryption (TLS/SSL) for the server or client
@@ -71,7 +80,7 @@ class Server:
 
         # 3. wrap regular server socket with SSL - from this moment all operations with socket, such as: Bind(), Listen(), Accept() wil be done with secured Server socket
         # wrapping means => putting message in secured envelope. All the data sent/received through the socket is authenticated and encrypted
-        print(f"[{self.app}]: Wrapping the 'regular' socket to be SSL 'secured' socket ...")
+        print(f"[{self.app}]: Wrapping the 'regular' TCP/IP socket to be SSL 'secured' socket ...")
         self.server_socket = context.wrap_socket(self.server_socket,
                                                  server_side=True) # <--- this line tells python that this is a Server and not a Client
 
@@ -99,14 +108,17 @@ class Server:
         # receiver_proc = multiprocessing.Process(target=self._receive_messages)#, args=(self.client_socket, self.client_messages_queue))
         # processor_proc = multiprocessing.Process(target=self._process_messages)#, args=(self. client_socket, self.client_messages_queue))
 
+        print(f"[{self.app}]: Starting these activities to run")
         receiver_thread = Thread(target=self._receive_messages)
         processor_thread = Thread(target=self._process_messages)
 
-        # 7. start the activities
-        print(f"[{self.app}]: Starting these activities to run")
         receiver_thread.start()
         processor_thread.start()
 
+        # wait till processor_thread ends up working with the Queue - join will finish when processor_thread finish
+        self.client_messages_queue.join()
+
+        # wait till both threads end up
         receiver_thread.join()
         processor_thread.join()
 
@@ -145,16 +157,7 @@ class Server:
             except ConnectionAbortedError as ee:
                 print(f"[{self.app}]: ### Receive error: Client connection forcefully terminated, error:\n {ee} ###")
                 break # consider here to close the DB
-
-        # # 7. Server closes the connection - in any way either if client disconnected properly or if client's connection forcefully closed
-        # # If the server doesn’t call close(), the socket could remain in a "half-closed" state
-        # # where resources are still being held open even though the client is no longer connected.
-        # # Server MUST close Clients connection and his own Server connection according to the protocol
-        # print(f"[{self.SERVER}]: Closing Client socket (connection) ")
-        # self.client_socket.close()
-        # print(f"[{self.SERVER}]: Closing Server socket (connection) ")
-        # self.server_socket.close()
-        # print(f"[{self.SERVER}]: processes finished !!!")
+        print(f"[{self.app}]: thread that extracting from socket the client messages - finished !!!")
 
     def _process_messages(self) -> None:
         """
@@ -171,7 +174,7 @@ class Server:
                 # If no message arrives within 1 second, it raises queue.Empty, which we're catching to simply continue the loop
 
                 message = self.client_messages_queue.get(timeout=8)
-                self.connection_store.setdefault(index, []).append(message)
+                self.received_messages_store.setdefault(index, []).append(message)
 
                 # check message, if empty then finish
                 if message == 'q':
@@ -182,7 +185,7 @@ class Server:
                 resp_message = "Hello, client! I received your message."
                 print(f"[{self.app}]: Sending response message back to client: {index}.{resp_message}")
                 self.client_socket.sendall(resp_message.encode())
-                self.connection_store.setdefault(index, []).append(resp_message)
+                self.received_messages_store.setdefault(index, []).append(resp_message)
                 index += 1
                 print(f"[{self.app}]: Message sent !")
 
@@ -192,7 +195,8 @@ class Server:
             except Exception as e:
                 print(f"[{self.app}]: Queue processing error: {e} ###")
                 break
-        print(f"[{self.app}]: processes finished !!!")
+        self.client_messages_queue.task_done()
+        print(f"[{self.app}]: thread that processing messages - finished !!!")
 
     def disconnect(self):
         # 7. Server closes the connection - in any way either if client disconnected properly or if client's connection forcefully closed
@@ -203,21 +207,18 @@ class Server:
         self.client_socket.close()
         print(f"[{self.app}]: Closing Server socket (connection) ")
         self.server_socket.close()
-        print(f"[{self.app}]: processes finished !!!")
+        print(f"[{self.app}]: both processes - finished !!!")
 
     def print_received_messages(self):
         print(f"\n[{self.app}]: All the messages that were sent: Client -> Server\n"
               f"--------------------------------------------------------------------")
-        print(f"the len of the store is: {len(self.connection_store)}")
-        for index, messages_list in self.connection_store.items():
+        print(f"the len of the store is: {len(self.received_messages_store)}")
+        for index, messages_list in self.received_messages_store.items():
             print(f"[{self.app}]: [{index}]: {messages_list}")
 
 # I added here a main just in case I wish to run the server directly and not from simpl_client_server_app.py
 if __name__ == '__main__':
     server = Server()
     server.start()
-
-    print(f"Server shutting down ")
     server.disconnect()
-
     server.print_received_messages()
