@@ -147,6 +147,7 @@ class Server:
 
             # check if data isnt empty or isnt 'q' - if data ok, put in the Q
             if message and message.decode() != 'q':
+                # method .put() is already thread safe so no need locks / mutexes
                 self.all_clients_messages_queue.put((notified_socket,
                                                      client_address,
                                                      message.decode('utf-8')))
@@ -247,7 +248,7 @@ class Server:
                 # default it is blocking function but we can set a time parameter to limit the blocking time to 1 sec
                 # If no message arrives within 1 second, it raises queue.Empty, which we're catching to simply continue the loop
                 print(colors_dict[col] + f"[{self.app}]: process: {threading.current_thread().name} tries to get a message from a queue ...")
-                client_socket_obj, client_address, message = self.all_clients_messages_queue.get(timeout=8)
+                client_socket_obj, client_address, message = self.all_clients_messages_queue.get(timeout=8) # method .get() is already thread safe so no need locks / mutexes
 
                 # respond to a client
                 resp_message = f"Hello, client! I received your message: {message}."
