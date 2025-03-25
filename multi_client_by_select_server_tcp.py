@@ -45,11 +45,11 @@ class Server:
         self.all_clients = {}
         self.received_messages_store = {}
 
-    def init_colors(self):
+    def _init_colors(self):
         init() # Initialize colorama (needed for Windows)
 
-    def init(self):
-        self.init_colors()
+    def _init(self):
+        self._init_colors()
 
         print(f"[{self.app}]: app is executed with the next parameters: ")
 
@@ -68,7 +68,7 @@ class Server:
             self.NUMBER_WORKING_THREADS = config["server"]["number_working_threads"]
             print(f"[{self.app}]: Number working threads: {self.NUMBER_WORKING_THREADS}")
 
-    def create_server_socket(self):
+    def _create_server_socket(self):
         # 1. Create a socket object
         print(f"\n\n[{self.app}]: Creating the 'regular' TCP/IP socket ...")
         self.server_socket = socket.socket(socket.AF_INET,
@@ -115,7 +115,7 @@ class Server:
         # if will be more than 1 free thread the OS will decide who will handle new message
         print(f"[{self.app}]: creating {NUM_WORKERS} working threads to process incoming messages from clients ...")
         for cnt in range(NUM_WORKERS):
-            threading.Thread(target=self._process_messages_from_queue,
+            threading.Thread(target=self._working_thread,
                              name=f"working_thread_{cnt}",
                              daemon=True).start() # see comment about this flag !!
 
@@ -133,7 +133,7 @@ class Server:
 
     def _receive_new_message(self, notified_socket) -> bool:
         """
-        extract new message from socket and put in queue
+        extract data (message) from socket and put in queue, if received data is 'q'
         :param notified_socket:
         :return:
         """
@@ -141,17 +141,17 @@ class Server:
         client_address = self.all_clients[notified_socket]
         print(Fore.LIGHTGREEN_EX + f"{[self.app]}: extracting data that arrived on existing client socket address {client_address}, will be received")
         try:
-            # put in queue
+            # get new data from socket
             message = notified_socket.recv(self.MAX_DATA_SIZE)
+            print(Fore.LIGHTGREEN_EX + f"[{self.app}]: received data: {message} from client: {client_address}")
 
-            # check arrived message content
-            if not message.decode() == 'q':
-                print(Fore.LIGHTGREEN_EX + f"{[self.app]}: putting message from {client_address}: {message.decode('utf-8')} into queue ...")
+            # check if data isnt empty or isnt 'q' - if data ok, put in the Q
+            if message and message.decode() != 'q':
                 self.all_clients_messages_queue.put((notified_socket,
                                                      client_address,
                                                      message.decode('utf-8')))
-            else:
-                print(Fore.LIGHTGREEN_EX + f"[{self.app}]: client: {client_address} asked to finish the connection ")
+            else: # empty data (client disconnected forcibly) or message = 'q' (client sent disconnection message)
+                print(Fore.LIGHTGREEN_EX + f"[{self.app}]: client: {client_address} - disconnected")
                 # deleting client socket from list
                 self.monitored_client_sockets_list.remove(notified_socket)
                 # closing this client socket
@@ -164,12 +164,20 @@ class Server:
                     print(Fore.LIGHTGREEN_EX + f"[{self.app}]: main process is finished")
                     return False
                 print(Fore.LIGHTGREEN_EX + f"[{self.app}]: main process keep on running because more client/s are still running")
+
         except ConnectionAbortedError as ee:
             print(Fore.LIGHTGREEN_EX + f"[{self.app}]: ### Receive error: Client connection forcefully terminated, error:\n {ee} ###")
+            # deleting client socket from list
+            self.monitored_client_sockets_list.remove(notified_socket)
+            # closing this client socket
+            notified_socket.close()
+            # deleting the client socket from dict (key is socket obj, value client address)
+            if notified_socket in self.all_clients:
+                del self.all_clients[notified_socket]
             return False # finish
         return True # keep monitoring
 
-    def scan_sockets(self):
+    def _scan_sockets(self):
         """
         monitoring loop, using select method that scans 3 type of lists:
         list of sockets from which we wish to read in case will be new message there
@@ -209,23 +217,23 @@ class Server:
             # new message arrived at one of the existing client connections
             # lets find out
             for notified_socket in readable_sockets_list:
-                # print(f"{[self.app]}: checking if new client connected or was new message from existing client ...")
                 if notified_socket is self.server_socket:
                     self._accept_new_socket()
                 else:
                     if not self._receive_new_message(notified_socket):
                         return
 
-
-    def start(self):
-        self.init()
-        self.create_server_socket()
-        self.scan_sockets()
+            for notified_socket in bad_sockets_list:
+                self.monitored_client_sockets_list.remove(notified_socket)
+                if notified_socket in self.all_clients:
+                    del self.all_clients[notified_socket]
+                notified_socket.close()
 
     # this is a worker thread func
-    def _process_messages_from_queue(self) -> None:
+    def _working_thread(self) -> None:
         """
-        This method will be executed per created thread. Each thread will run same method.
+        This is a method that each working thread will run.
+        Each working thread will extract from Q only valid messages
         Each working thread is looping the server queue, once new message entered, the OS decides which on of the processes is free to retrieve the message and to process it
         :return:
         """
@@ -239,7 +247,7 @@ class Server:
                 # default it is blocking function but we can set a time parameter to limit the blocking time to 1 sec
                 # If no message arrives within 1 second, it raises queue.Empty, which we're catching to simply continue the loop
                 print(colors_dict[col] + f"[{self.app}]: process: {threading.current_thread().name} tries to get a message from a queue ...")
-                client_socket_obj, client_socket_address, message = self.all_clients_messages_queue.get(timeout=8)
+                client_socket_obj, client_address, message = self.all_clients_messages_queue.get(timeout=8)
 
                 # respond to a client
                 resp_message = f"Hello, client! I received your message: {message}."
@@ -252,7 +260,7 @@ class Server:
                     print(colors_dict[col] + f"[{self.app}]: message sent !")
                     # storing all
                     print(colors_dict[col] + f"[{self.app}]: storing message in internal data base ...")
-                    self.received_messages_store.setdefault(client_socket_address, []).append((index, message, resp_message))
+                    self.received_messages_store.setdefault(client_address, []).append((index, message, resp_message))
                     index += 1
                 finally:
                     self.all_clients_messages_queue.task_done()
@@ -265,17 +273,12 @@ class Server:
         print(colors_dict[col] + f"[{self.app}]: process: {threading.current_thread().name} - finished")
 
     def disconnect(self):
-        # 7. Server closes the connection - in any way either if client disconnected properly or if client's connection forcefully closed
-        # If the server doesn’t call close(), the socket could remain in a "half-closed" state
-        # where resources are still being held open even though the client is no longer connected.
-        # Server MUST close Clients connection and his own Server connection according to the protocol
-
+        """
+        Server closes both server socket and clients sockets
+        :return:
+        """
         print(Fore.LIGHTGREEN_EX + f"[{self.app}]: Closing Server socket (connection) ")
         self.server_socket.close()
-
-        # for client_socket in self.monitored_client_sockets_list:
-        #     print(Fore.LIGHTGREEN_EX + f"[{self.app}]: Closing Client socket: {client_socket} ")
-        #     client_socket.close()
         print(Fore.LIGHTGREEN_EX + f"[{self.app}]: Server socket is closed + all client sockets are close, app is finished !!!")
 
     def print_received_messages(self):
@@ -286,6 +289,12 @@ class Server:
             print(Fore.LIGHTGREEN_EX + f"\n\n[{self.app}]: Client: [{client_address}], messages are: ")
             for message in all_client_messages_list:
                 print(Fore.LIGHTGREEN_EX + f"[{self.app}]: {message}")
+
+    def start(self):
+        self._init()
+        self._create_server_socket()
+        self._scan_sockets()
+
 
 # I added here a main just in case I wish to run the server directly and not from simpl_client_server_app.py
 if __name__ == '__main__':
