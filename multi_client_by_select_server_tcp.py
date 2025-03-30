@@ -53,7 +53,7 @@ class Server:
 
         print(f"[{self.app}]: app is executed with the next parameters: ")
 
-        with open("server_config.yaml", "r") as yaml_file:
+        with open("configs/server_config.yaml", "r") as yaml_file:
             config = yaml.safe_load(yaml_file)
 
             self.IP = config["server"]["ip_address"]  # also possible to do: socket.gethostbyname(socket.gethostname()) if not ip else ip  # <---- this way we determine the local host address, this way -> we set it hard codded: "127.0.0.1" if not ip else ip

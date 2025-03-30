@@ -44,7 +44,7 @@ class Client:
         self.connect()
 
     def init(self):
-        with (open("client_config.yaml", "r") as yaml_file):
+        with (open("configs/client_config.yaml", "r") as yaml_file):
             config = yaml.safe_load(yaml_file)
             return config["client"]["ip_address"],\
                    config["client"]["port"],\
