@@ -46,7 +46,7 @@ class Server:
         print(f"[{self.app}]: Max data size: {self.MAX_DATA_SIZE}")
 
     def init(self):
-        with open("server_config.yaml", "r") as yaml_file:
+        with open("configs/server_config.yaml", "r") as yaml_file:
             config = yaml.safe_load(yaml_file)
             return config["server"]["ip_address"],\
                    config["server"]["port"], \
