@@ -6,6 +6,7 @@ import yaml
 from typing import Final # makes my types be final without ability to change their type
 import ssl
 import os
+from pathlib import Path
 
 # required for multi client
 import select
@@ -46,15 +47,16 @@ class Server:
         self.MAX_DATA_SIZE = max_data_size
         print(f"[{self.app}]: Max data size: {self.MAX_DATA_SIZE}")
 
-    def _find_full_file_path(self, filename):
-        for dirpath, _, filenames in os.walk(os.getcwd()):
-            if filename in filenames:
-                full_file_path = os.path.join(dirpath, filename)  # Return full path if found
+    def _find_full_file_path(self, my_path, my_file):
+        for dirpath, _, filenames in os.walk(my_path):
+            if my_file in filenames:
+                full_file_path = Path(str(os.path.join(dirpath, my_file)))  # Return full path if found
                 return full_file_path
         return None  # Return None if not found
 
     def _init(self):
-        full_path_to_file = self._find_full_file_path("server_config.yaml")
+        full_path_to_file = self._find_full_file_path(Path.cwd().parent,
+                                              "server_config.yaml")
         print(f"[{self.app}]: Loading configuration for the server from: {full_path_to_file}")
 
         with open(full_path_to_file, "r") as yaml_file:
@@ -86,8 +88,12 @@ class Server:
         context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         # load certificate + key (certificate for authentication with Client, keys for encryption messages)
         print(f"[{self.app}]: Load Authentication certificate and encryption keys, for secure connection ...")
-        context.load_cert_chain(certfile="certs/ilana_cert_01.pem",
-                                keyfile="certs/ilana_key_01.pem")
+        full_path_to_cert_file = self._find_full_file_path(Path.cwd().parent,"ilana_cert_01.pem")
+        full_path_to_key_file = self._find_full_file_path(Path.cwd().parent, "ilana_key_01.pem")
+        print(f"[{self.app}]: Loading cert file from: {full_path_to_cert_file}")
+        print(f"[{self.app}]: Loading key file from: {full_path_to_key_file}")
+        context.load_cert_chain(certfile=full_path_to_cert_file,
+                                keyfile=full_path_to_key_file)
 
         # 3. wrap regular server socket with SSL - from this moment all operations with socket, such as: Bind(), Listen(), Accept() wil be done with secured Server socket
         # wrapping means => putting message in secured envelope. All the data sent/received through the socket is authenticated and encrypted
@@ -127,10 +133,11 @@ class Server:
         processor_thread.start()
 
         # wait till processor_thread ends up working with the Queue - join will finish when processor_thread finish
-        self.client_messages_queue.join()
+        #self.client_messages_queue.join()
 
         # wait till both threads end up
         receiver_thread.join()
+        # if we are here kill the next thread too
         processor_thread.join()
 
         # receiver_thread.close()  # no need to close threads (only processes) threads shares memory while processes are not
@@ -143,7 +150,7 @@ class Server:
         :return: None
         """
         while True:
-            print(f"[{self.app}]: process 'receive & store' running ...")
+            print(f"[{self.app}]: process 'receive & store' is running ...")
             try:
                 # Several scenarios can be here: --------------------------------------------------------------------------------------------------------------------
                 # 1: if no incoming message (from a client), server is stack (blocked) and keeps on waiting
@@ -154,22 +161,22 @@ class Server:
                 #    still the Server will close both (server + client) connection properly
                 # --------------------------------------------------------------------------------------------------------------------------------------------------
                 data = self.client_socket.recv(self.MAX_DATA_SIZE) # its bad idea to do: data = self.client_socket.recv(self.MAX_DATA_SIZE).decode() as a data can be empty
-                if not data:
-                    print(f"[{self.app}] empty message - is ignored")
-                    continue
-                    # break # consider here to close the DB
-
-                message_from_client = data.decode('utf-8')
-                print(f"[{self.app}]: Received message from a Client: <{message_from_client}>")
-                self.client_messages_queue.put(message_from_client)
-
-                if data.decode() == 'q':
+                if data: # even if 'q' we put in queue
+                    message_from_client = data.decode('utf-8')
+                    print(f"[{self.app}]: Received message from a client: <{message_from_client}>")
+                    self.client_messages_queue.put(message_from_client)
+                    # also if 'q' finish this thread (the other thread will finish as well)
+                    if message_from_client == 'q': # empty data (client disconnected forcibly) or message = 'q' (client sent disconnection message)
+                        print(f"[{self.app}]: client - disconnected")
+                        print(f"[{self.app}]: Server - finished")
+                        break
+                else: # if arrived empty data (=client disconnected forcibly) - we finish this thread + we need to make other thread to finish too, so we put in queue 'q'
+                    self.client_messages_queue.put('q')
                     break
             except ConnectionAbortedError as ee:
-                print(f"[{self.app}]: ### Receive error: Client connection forcefully terminated, error:\n {ee} ###")
-                break # consider here to close the DB
-        print(f"[{self.app}]: thread that extracting from socket the client messages - finished !!!")
-
+                print(f"[{self.app}]: client - seems like failed")
+                print(f"[{self.app}]: Thread - finished")
+                break
     def _process_messages(self) -> None:
         """
         Looping the server queue, once new message entered, retrieve and respond
@@ -199,7 +206,6 @@ class Server:
                 self.received_messages_store.setdefault(index, []).append(resp_message)
                 index += 1
                 print(f"[{self.app}]: Message sent !")
-
             except queue.Empty:
                 print(f"[{self.app}]: yet found any message in queue, keep polling the queue ...")
                 continue

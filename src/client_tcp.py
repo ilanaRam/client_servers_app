@@ -1,4 +1,5 @@
 import socket
+from pathlib import Path
 from typing import Final # makes my types be final without ability to change their type
 import yaml
 import time
@@ -44,16 +45,17 @@ class Client:
 
         self._connect()
 
-    def _find_full_file_path(self, filename):
-        for dirpath, _, filenames in os.walk(os.getcwd()):
-            if filename in filenames:
-                full_file_path = os.path.join(dirpath, filename)  # Return full path if found
+    def _find_full_file_path(self, my_path, my_file):
+        for dirpath, _, filenames in os.walk(my_path): #
+            if my_file in filenames:
+                full_file_path = Path(str(os.path.join(dirpath, my_file)))  # Return full path if found
                 return full_file_path
         return None  # Return None if not found
 
     def _init(self):
-        full_path_to_file = self._find_full_file_path("client_config.yaml")
+        full_path_to_file = self._find_full_file_path(Path.cwd().parent,"client_config.yaml")
         print(f"[{self.app}]: Loading configuration for the client from: {full_path_to_file}")
+
         with (open(full_path_to_file, "r") as yaml_file):
             config = yaml.safe_load(yaml_file)
             return config["client"]["ip_address"],\
