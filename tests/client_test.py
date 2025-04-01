@@ -9,6 +9,7 @@ import yaml
 class MockServer:
     def __init__(self):
         self.app: Final[str] = "TEST FOR CLIENT"
+        self.mock_server_app: Final[str] = "MOCK_SERVER"
         # A simple secure Echo Server that sends back whatever it receives.
         print(f"[{self.app}]: Mocking the Server")
         # ----------------------------------------------------------
@@ -23,40 +24,41 @@ class MockServer:
 
         self.MAX_DATA_SIZE = max_data_size
         print(f"[{self.app}]: Max data size: {self.MAX_DATA_SIZE}")
-        # ----------------------------------------------------------
-        print(f"[{self.app}]: Creating server socket ...")
+
+    def mock_echo_server(self):
+        print(f"[{self.mock_server_app}]: Creating mock echo server socket ...")
         self.server_socket = socket.socket(socket.AF_INET,
                                       socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-        print(f"[{self.app}]: Creating SSL context  for my echo auto server ...")
+        print(f"[{self.mock_server_app}]: Creating SSL context  for my echo auto server ...")
         context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         # load certificate + key (certificate for authentication with Client, keys for encryption messages)
-        print(f"[{self.app}]: Load Authentication certificate and encryption keys, for secure connection ...")
+        print(f"[{self.mock_server_app}]: Load Authentication certificate and encryption keys, for secure connection ...")
         context.load_cert_chain(certfile="certs/ilana_cert_01.pem",
                                 keyfile="certs/ilana_key_01.pem")
-        print(f"[{self.app}]: Wrapping the 'regular' TCP/IP socket to be SSL 'secured' socket ...")
+        print(f"[{self.mock_server_app}]: Wrapping the 'regular' TCP/IP socket to be SSL 'secured' socket ...")
         self.server_socket = context.wrap_socket(self.server_socket,
                                                  server_side=True)  # <--- this line tells python that this is a Server and not a Client
-
         self.server_socket.bind((self.IP, self.PORT))
         self.server_socket.listen(1)  # Allow 1 client
-        print("[MOCK SERVER] Server started, waiting for connection...")
 
-        conn, addr = server_socket.accept()
-        print(f"[MOCK SERVER] Client connected from {addr}")
+        print(f"[{self.mock_server_app}] @@@ Mock server started, waiting for connection @@@ ...")
+        client_socket, client_address = self.server_socket.accept()
+        print(f"[{self.mock_server_app}] Client connected from {client_address}")
 
         while True:
+            print(f"[{self.mock_server_app}]: process 'receive & store & echo' is running ...")
             try:
-                data = conn.recv(1024)  # Receive message from client
+                data = client_socket.recv(1024)  # Receive message from client
                 if not data:
                     break
-                conn.sendall(data)  # Send back the same message
+                client_socket.sendall(data)  # Send back the same message
             except Exception:
                 break
 
-        conn.close()
-        server_socket.close()
+        client_socket.close()
+        self.server_socket.close()
         print("[MOCK SERVER] Server closed.")
 
     def _init(self):
