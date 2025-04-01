@@ -57,6 +57,8 @@ class Server:
     def _init(self):
         full_path_to_file = self._find_full_file_path(Path.cwd().parent,
                                               "server_config.yaml")
+        if not full_path_to_file:
+            raise FileExistsError
         print(f"[{self.app}]: Loading configuration for the server from: {full_path_to_file}")
 
         with open(full_path_to_file, "r") as yaml_file:
@@ -90,8 +92,10 @@ class Server:
         print(f"[{self.app}]: Load Authentication certificate and encryption keys, for secure connection ...")
         full_path_to_cert_file = self._find_full_file_path(Path.cwd().parent,"ilana_cert_01.pem")
         full_path_to_key_file = self._find_full_file_path(Path.cwd().parent, "ilana_key_01.pem")
-        print(f"[{self.app}]: Loading cert file from: {full_path_to_cert_file}")
-        print(f"[{self.app}]: Loading key file from: {full_path_to_key_file}")
+
+        if not full_path_to_cert_file or not full_path_to_key_file:
+            raise FileExistsError
+        print(f"[{self.app}]: Loading cert + key files from: {full_path_to_cert_file}")
         context.load_cert_chain(certfile=full_path_to_cert_file,
                                 keyfile=full_path_to_key_file)
 

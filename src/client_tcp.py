@@ -54,6 +54,8 @@ class Client:
 
     def _init(self):
         full_path_to_file = self._find_full_file_path(Path.cwd().parent,"client_config.yaml")
+        if not full_path_to_file:
+            raise FileExistsError
         print(f"[{self.app}]: Loading configuration for the client from: {full_path_to_file}")
 
         with (open(full_path_to_file, "r") as yaml_file):
