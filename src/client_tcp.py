@@ -3,6 +3,7 @@ from typing import Final # makes my types be final without ability to change the
 import yaml
 import time
 import ssl
+import os
 
 
 
@@ -24,7 +25,7 @@ class Client:
         self.connection_store = {}
         self.index = 0
 
-        ip, port, max_retries, retry_delay, max_data_size = self.init()
+        ip, port, max_retries, retry_delay, max_data_size = self._init()
         self.IP: Final[str] =  ip  # also possible to do: socket.gethostbyname(socket.gethostname())  # <---- this way we determine the local host address, this way -> we set it hard codded: "127.0.0.1" if not ip else ip
         print(f"[{self.app}]: app is executed using the next parameters: ")
         print(f"[{self.app}]: IP: {self.IP}")
@@ -41,10 +42,19 @@ class Client:
         self.MAX_DATA_SIZE = max_data_size
         print(f"[{self.app}]: Max data size: {self.MAX_DATA_SIZE}")
 
-        self.connect()
+        self._connect()
 
-    def init(self):
-        with (open("configs/client_config.yaml", "r") as yaml_file):
+    def _find_full_file_path(self, filename):
+        for dirpath, _, filenames in os.walk(os.getcwd()):
+            if filename in filenames:
+                full_file_path = os.path.join(dirpath, filename)  # Return full path if found
+                return full_file_path
+        return None  # Return None if not found
+
+    def _init(self):
+        full_path_to_file = self._find_full_file_path("client_config.yaml")
+        print(f"[{self.app}]: Loading configuration for the client from: {full_path_to_file}")
+        with (open(full_path_to_file, "r") as yaml_file):
             config = yaml.safe_load(yaml_file)
             return config["client"]["ip_address"],\
                    config["client"]["port"],\
@@ -52,7 +62,7 @@ class Client:
                    config["client"]["retry_delay"], \
                    config["client"]["max_data_size"]
 
-    def connect(self):
+    def _connect(self):
         # 1. create client 'regular' socket - this operation has nothing to do with Server (it doesnt requires a Server be connected)
         print(f"\n\n[{self.app}]: Creating the 'regular' socket ...")
         self.client_socket = socket.socket(socket.AF_INET,     # this means we use protocol IP (our socket will expect to connect between 2 IP addresses
@@ -94,6 +104,22 @@ class Client:
             print(f"[{self.app}]: Failed to connect to the Server after {self.max_retries} attempts ###")
             exit(1)  # Exit if connection never succeeded
 
+    def _send(self, message):
+        # actual sending of the data to the server
+        print(f"[{self.app}]: Sending message: {message} to Server ..")
+        self.client_socket.sendall(message.encode())
+        print(f"[{self.app}]: Message was sent")
+        self.connection_store.setdefault(self.index,[]).append(message)
+
+    def _receive(self):
+        # Client waits to get the answer from the server
+        # we need to define MAX bytes we allow to extract from the socket - here we say max 1024 bytes (1K) if will be less ok
+        print(f"[{self.app}]: Waiting for response from the server ...")
+        received_data = self.client_socket.recv(self.MAX_DATA_SIZE).decode()  # blocking operation, client will not send next message before he got respond to the current message
+        print(f"[{self.app}]: Received message from the server: <{received_data}>")
+        self.connection_store.setdefault(self.index, []).append(received_data)
+        self.index += 1
+
     def start(self):
         """
         Client works in a sequential manner - works like a chat:
@@ -111,26 +137,10 @@ class Client:
             if not message:
                 print(f"[{self.app}]: Empty message is ignored")
             else:
-                self.send(message) # send any message to server (either 'q' or not, as message 'q' tels the server to finish)
+                self._send(message) # send any message to server (either 'q' or not, as message 'q' tels the server to finish)
                 if message == 'q':
                     return
-                self.receive()
-
-    def send(self, message):
-        # actual sending of the data to the server
-        print(f"[{self.app}]: Sending message: {message} to Server ..")
-        self.client_socket.sendall(message.encode())
-        print(f"[{self.app}]: Message was sent")
-        self.connection_store.setdefault(self.index,[]).append(message)
-
-    def receive(self):
-        # Client waits to get the answer from the server
-        # we need to define MAX bytes we allow to extract from the socket - here we say max 1024 bytes (1K) if will be less ok
-        print(f"[{self.app}]: Waiting for response from the server ...")
-        received_data = self.client_socket.recv(self.MAX_DATA_SIZE).decode()  # blocking operation, client will not send next message before he got respond to the current message
-        print(f"[{self.app}]: Received message from the server: <{received_data}>")
-        self.connection_store.setdefault(self.index, []).append(received_data)
-        self.index += 1
+                self._receive()
 
     def disconnect(self):
         print(f"[{self.app}]: Closing the SOCKET (connection) ....")

@@ -48,12 +48,24 @@ class Server:
     def _init_colors(self):
         init() # Initialize colorama (needed for Windows)
 
+    def _find_full_file_path(self, filename):
+        for dirpath, _, filenames in os.walk(os.getcwd()):
+            if filename in filenames:
+                full_file_path = os.path.join(dirpath, filename)  # Return full path if found
+                return full_file_path
+        return None  # Return None if not found
+
     def _init(self):
         self._init_colors()
-
         print(f"[{self.app}]: app is executed with the next parameters: ")
 
-        with open("configs/server_config.yaml", "r") as yaml_file:
+        full_path_to_file = self._find_full_file_path("server_config.yaml")
+        print(f"[{self.app}]: Loading configuration for the server from: {full_path_to_file}")
+        if not full_path_to_file:
+            raise FileExistsError
+
+
+        with open(full_path_to_file, "r") as yaml_file:
             config = yaml.safe_load(yaml_file)
 
             self.IP = config["server"]["ip_address"]  # also possible to do: socket.gethostbyname(socket.gethostname()) if not ip else ip  # <---- this way we determine the local host address, this way -> we set it hard codded: "127.0.0.1" if not ip else ip
@@ -97,7 +109,7 @@ class Server:
 
         # 5. This method is actually puts Server's socket into listening mode, it is not blocking func
         # OS knows that only 1 connection is allowed, the rest will be rejected
-        self.server_socket.listen(self.MAX_CONNECTIONS)
+        self.server_socket.listen()
         print(f"[{self.app}]: Ready and is listening on port 8820...")
 
     def _create_working_threads(self, NUM_WORKERS):
