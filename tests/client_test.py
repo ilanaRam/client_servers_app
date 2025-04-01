@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from src.client_tcp import Client
 import socket
@@ -25,6 +27,13 @@ class MockServer:
         self.MAX_DATA_SIZE = max_data_size
         print(f"[{self.app}]: Max data size: {self.MAX_DATA_SIZE}")
 
+    def _find_full_file_path(self, filename):
+        for dirpath, _, filenames in os.walk(os.getcwd()):
+            if filename in filenames:
+                full_file_path = os.path.join(dirpath, filename)  # Return full path if found
+                return full_file_path
+        return None  # Return None if not found
+
     def mock_echo_server(self):
         print(f"[{self.mock_server_app}]: Creating mock echo server socket ...")
         self.server_socket = socket.socket(socket.AF_INET,
@@ -35,6 +44,14 @@ class MockServer:
         context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         # load certificate + key (certificate for authentication with Client, keys for encryption messages)
         print(f"[{self.mock_server_app}]: Load Authentication certificate and encryption keys, for secure connection ...")
+
+        full_path_to_cert_file = self._find_full_file_path(Path.cwd().parent, "ilana_cert_01.pem")
+        full_path_to_key_file = self._find_full_file_path(Path.cwd().parent, "ilana_key_01.pem")
+        print(f"[{self.app}]: Loading cert + key files from: {full_path_to_cert_file}")
+        context.load_cert_chain(certfile=full_path_to_cert_file,
+                                keyfile=full_path_to_key_file)
+
+
         context.load_cert_chain(certfile="certs/ilana_cert_01.pem",
                                 keyfile="certs/ilana_key_01.pem")
         print(f"[{self.mock_server_app}]: Wrapping the 'regular' TCP/IP socket to be SSL 'secured' socket ...")

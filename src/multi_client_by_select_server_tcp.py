@@ -1,5 +1,6 @@
 import os
 import threading
+from pathlib import Path
 from threading import Thread
 import queue
 import socket
@@ -48,10 +49,10 @@ class Server:
     def _init_colors(self):
         init() # Initialize colorama (needed for Windows)
 
-    def _find_full_file_path(self, filename):
-        for dirpath, _, filenames in os.walk(os.getcwd()):
-            if filename in filenames:
-                full_file_path = os.path.join(dirpath, filename)  # Return full path if found
+    def _find_full_file_path(self, my_path, my_file):
+        for dirpath, _, filenames in os.walk(my_path):  #
+            if my_file in filenames:
+                full_file_path = Path(str(os.path.join(dirpath, my_file)))  # Return full path if found
                 return full_file_path
         return None  # Return None if not found
 
@@ -59,11 +60,10 @@ class Server:
         self._init_colors()
         print(f"[{self.app}]: app is executed with the next parameters: ")
 
-        full_path_to_file = self._find_full_file_path("server_config.yaml")
+        full_path_to_file = self._find_full_file_path(Path.cwd().parent,"server_config.yaml")
         print(f"[{self.app}]: Loading configuration for the server from: {full_path_to_file}")
         if not full_path_to_file:
             raise FileExistsError
-
 
         with open(full_path_to_file, "r") as yaml_file:
             config = yaml.safe_load(yaml_file)
@@ -95,8 +95,16 @@ class Server:
         context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         # load certificate + key (certificate for authentication with Client, keys for encryption messages)
         print(f"[{self.app}]: Load Authentication certificate and encryption keys, for secure connection ...")
-        context.load_cert_chain(certfile="certs/ilana_cert_01.pem",
-                                keyfile="certs/ilana_key_01.pem")
+
+        full_path_to_cert_file = self._find_full_file_path(Path.cwd().parent, "ilana_cert_01.pem")
+        full_path_to_key_file = self._find_full_file_path(Path.cwd().parent, "ilana_key_01.pem")
+
+        if not full_path_to_cert_file or not full_path_to_key_file:
+            raise FileExistsError
+        print(f"[{self.app}]: Loading cert + key files from: {full_path_to_cert_file}")
+
+        context.load_cert_chain(full_path_to_cert_file,
+                                keyfile=full_path_to_key_file)
 
         # 3. wrap regular server socket with SSL - from this moment all operations with socket, such as: Bind(), Listen(), Accept() wil be done with secured Server socket
         # wrapping means => putting message in secured envelope. All the data sent/received through the socket is authenticated and encrypted
