@@ -5,6 +5,7 @@ import socket
 import yaml
 from typing import Final # makes my types be final without ability to change their type
 import ssl
+import os
 
 # required for multi client
 import select
@@ -34,7 +35,7 @@ class Server:
         # for multi client
         self.client_sockets = []
 
-        ip, port, max_data_size = self.init()
+        ip, port, max_data_size = self._init()
         print(f"[{self.app}]: app is executed using the next parameters: ")
         self.IP: Final[str] = ip # also possible to do: socket.gethostbyname(socket.gethostname()) if not ip else ip  # <---- this way we determine the local host address, this way -> we set it hard codded: "127.0.0.1" if not ip else ip
         print(f"[{self.app}]: IP: {self.IP}")
@@ -45,8 +46,18 @@ class Server:
         self.MAX_DATA_SIZE = max_data_size
         print(f"[{self.app}]: Max data size: {self.MAX_DATA_SIZE}")
 
-    def init(self):
-        with open("configs/server_config.yaml", "r") as yaml_file:
+    def _find_full_file_path(self, filename):
+        for dirpath, _, filenames in os.walk(os.getcwd()):
+            if filename in filenames:
+                full_file_path = os.path.join(dirpath, filename)  # Return full path if found
+                return full_file_path
+        return None  # Return None if not found
+
+    def _init(self):
+        full_path_to_file = self._find_full_file_path("server_config.yaml")
+        print(f"[{self.app}]: Loading configuration for the server from: {full_path_to_file}")
+
+        with open(full_path_to_file, "r") as yaml_file:
             config = yaml.safe_load(yaml_file)
             return config["server"]["ip_address"],\
                    config["server"]["port"], \
