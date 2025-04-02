@@ -75,15 +75,19 @@ class Client:
 
         # 2. creating a context object that holds all relevant settings and configurations related to SSL/TLS secured connection
         print(f"[{self.app}]: Creating the secured SSL context (set of rules for secure connection) ...")
+        full_path_to_cert_file = self._find_full_file_path(Path.cwd().parent, "ilana_cert_01.pem")
+        if not full_path_to_cert_file:
+            raise FileExistsError
+        print(f"[{self.app}]: Loading cert from file: {full_path_to_cert_file}")
         # context = ssl.create_default_context() # <--- if I do it this way, I actually tell client to accept any cert from server, while server will by default create self signed certificate that will be by default rejected by python ssl so I need tell Client that will be sent specific self signed cert from server and please deal only with this one
-        context = ssl.create_default_context(cafile="certs/ilana_cert_01.pem")# <--- if I do it this way, I actually tell client to verify specific self signed certificate
+        context = ssl.create_default_context(cafile=full_path_to_cert_file)# <--- if I do it this way, I actually tell client to verify specific self signed certificate
         print(f"[{self.app}]: default SSL context ... created")
 
         # since we use self-signed certificate, which is default, by default python ssl module will reject it so we must handle it:
         # Disable hostname verification, it is good while testing but in production we must replace this with: True
         context.check_hostname = False
         # this way we say: allow only this cert: 'certs/ilana_cert_01.pem',  or we can use ssl.CERT_NONE to make Client not check certificate at all
-        context.load_verify_locations('certs/ilana_cert_01.pem')
+        context.load_verify_locations(full_path_to_cert_file)
         # context.verify_mode = ssl.CERT_NONE # Accept any certificate, it is good while testing but in production we must replace this with: CERT_REQUIRED
 
         print(f"[{self.app}]: Wrapping 'regular' socket with SSL")
@@ -108,7 +112,7 @@ class Client:
             print(f"[{self.app}]: Failed to connect to the Server after {self.max_retries} attempts ###")
             exit(1)  # Exit if connection never succeeded
 
-    def _send(self, message):
+    def send(self, message):
         # actual sending of the data to the server
         print(f"[{self.app}]: Sending message: {message} to Server ..")
         self.client_socket.sendall(message.encode())
@@ -141,7 +145,7 @@ class Client:
             if not message:
                 print(f"[{self.app}]: Empty message is ignored")
             else:
-                self._send(message) # send any message to server (either 'q' or not, as message 'q' tels the server to finish)
+                self.send(message) # send any message to server (either 'q' or not, as message 'q' tels the server to finish)
                 if message == 'q':
                     return
                 self._receive()

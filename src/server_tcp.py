@@ -98,7 +98,6 @@ class Server:
         print(f"[{self.app}]: Loading cert + key files from: {full_path_to_cert_file}")
         context.load_cert_chain(certfile=full_path_to_cert_file,
                                 keyfile=full_path_to_key_file)
-
         # 3. wrap regular server socket with SSL - from this moment all operations with socket, such as: Bind(), Listen(), Accept() wil be done with secured Server socket
         # wrapping means => putting message in secured envelope. All the data sent/received through the socket is authenticated and encrypted
         print(f"[{self.app}]: Wrapping the 'regular' TCP/IP socket to be SSL 'secured' socket ...")
@@ -135,17 +134,10 @@ class Server:
 
         receiver_thread.start()
         processor_thread.start()
-
-        # wait till processor_thread ends up working with the Queue - join will finish when processor_thread finish
-        #self.client_messages_queue.join()
-
         # wait till both threads end up
         receiver_thread.join()
         # if we are here kill the next thread too
         processor_thread.join()
-
-        # receiver_thread.close()  # no need to close threads (only processes) threads shares memory while processes are not
-        # processor_thread.close()
         print(f"[{self.app}]: Server shut down.")
 
     def _receive_messages(self):
