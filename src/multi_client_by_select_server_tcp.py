@@ -1,7 +1,6 @@
 import os
 import threading
 from pathlib import Path
-from threading import Thread
 import queue
 import socket
 import yaml
@@ -103,7 +102,7 @@ class Server:
             raise FileExistsError
         print(f"[{self.app}]: Loading cert + key files from: {full_path_to_cert_file}")
 
-        context.load_cert_chain(full_path_to_cert_file,
+        context.load_cert_chain(certfile=full_path_to_cert_file,
                                 keyfile=full_path_to_key_file)
 
         # 3. wrap regular server socket with SSL - from this moment all operations with socket, such as: Bind(), Listen(), Accept() wil be done with secured Server socket
@@ -111,7 +110,6 @@ class Server:
         print(f"[{self.app}]: Wrapping the 'regular' TCP/IP socket to be SSL 'secured' socket ...")
         self.server_socket = context.wrap_socket(self.server_socket,
                                                  server_side=True)  # <--- this line tells python that this is a Server and not a Client
-
         # 4. Bind the socket (secured socket) to an address and port
         self.server_socket.bind((self.IP, self.PORT))
 
