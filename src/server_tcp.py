@@ -119,7 +119,7 @@ class Server:
         # 6. Server is blocked (stack, pauses, waiting) till first Client (single client) connection. Server will wait forever for the connection
         # first connected client will get the Server from stack, will be returned Client connection details: client_ip, client_socket (only socket actually in use)
         # then server will be stacked waiting for messages from connected client
-        print(f"[SERVER]: is paused until client data is arrived")
+        print(f"[SERVER]: is paused until client arrives ...")
         self.client_socket, client_address = self.server_socket.accept()
         print(f"[{self.app}]: Connection is established with client ip address: {client_address}, type: {type(self.client_socket)}")
 

@@ -81,12 +81,12 @@ class MockServer:
         while True:
             try:
                 data = self.client_socket.recv(1024)
-                print(f"[{self.mock_server_app}]: received data: {data.decode()}")
                 if not data:
                     print(f"[{self.mock_server_app}]: Client disconnected")
                     break
-                print(f"[{self.mock_server_app}] got request from client, sending echo response")
+                print(f"[{self.mock_server_app}] got request from client-----> {data.decode()}")
                 self.client_socket.sendall(data)
+                print(f"[{self.mock_server_app}] sent echo response")
             except Exception:
                 break
         self.client_socket.close()
@@ -102,7 +102,7 @@ class MockServer:
         :return:
         """
         """Start the mock server in a background thread."""
-        print(f"\n\n\n[{self.mock_server_app}]: creating mock echo server thread ....")
+        print(f"\n[{self.mock_server_app}]: creating mock echo server thread ....")
         self.server_thread = threading.Thread(target=self._mock_echo_server,
                                               name="Mock server",
                                               daemon=True)
@@ -134,11 +134,10 @@ This makes the fixture automatically used by every test in the class,
 without the need to explicitly add it as an argument to each test. Normally, 
 a fixture is only invoked when it’s passed as an argument to a test function or method, but with autouse=True, it’s automatically invoked for each test
 """
-@pytest.fixture(scope="class",
-                autouse=True)
-def mock_server_fixture(request):
+@pytest.fixture()#scope="class", autouse=True)
+def mock_server_fixture():
     # Part 1 - called: Fixture Setup
-    print("[Fixture Setup]: Starting mock server - TEST START >>>>>>>>>>>>>>>>>>>>>>>>>>>")
+    print("\n\n[Fixture Setup]: Starting mock server - TEST START >>>>>>>>>>>>>>>>>>>>>>>>>>>\n")
     #if not hasattr(request.cls, 'mock_server'):
     mock_server = MockServer()#request.cls.
     mock_server.start_mock_server()
@@ -146,29 +145,25 @@ def mock_server_fixture(request):
     # Part 2 - called: Fixture TearDown
     if mock_server and mock_server.is_alive():
         mock_server.kill()
-    print("[Fixture Teardown]: Stopping mock server - Test END <<<<<<<<<<<<<<<<<<<<<<<<<")
+    print("\n[Fixture Teardown]: Stopping mock server - Test END <<<<<<<<<<<<<<<<<<<<<<<<<")
 
 
 class TestClient:
     # class data
     mock_server = None
 
-    # @pytest.fixture
-    # def client_obj(self):
-    #     """
-    #     fixture that will be called per test twice.
-    #     first time to create and yield client of the DB (based on SQLite3). second time to close the client
-    #     Use in-memory SQLite for testing: that stores data in RAM and not on the disk for: speed access, for tests as dat not changing the environment - this is called clean testing
-    #     """
-    #     print("\n++++++++ START TEST +++++++++++++++++++++++")
-    #     client = Client()
-    #     yield client  # it is like return
-    #     print("\n+++++++ END TEST ++++++++++++++++++++++++\n")
-
-
-    def test_client_sends_and_receives_same_message_single(self):#,client_obj):
+    def test_client_sends_and_receives_same_message_single(self, mock_server_fixture):
         """Test that the client sends and receives the correct message."""
         client_obj = Client()
         client_obj.send("Hello Server")
         response = client_obj.client_socket.recv(1024).decode()
         assert response == "Hello Server"
+
+    def test_client_sends_and_receives_multiple_messages(self, mock_server_fixture):
+        """Test that the client sends and receives the correct message."""
+        client_obj = Client()
+        for ind in range(0,100):
+            msg = f"[msg_{ind}]:Hello_Server"
+            client_obj.send(msg)
+            response = client_obj.client_socket.recv(1024).decode()
+            assert response == msg
