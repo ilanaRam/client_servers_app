@@ -106,7 +106,7 @@ class Client:
                 print(f"[{self.app}]: Connected to the Server successfully !")
                 break
             except (ConnectionRefusedError, socket.timeout):
-                print(f"[{self.app}]: Server not up yet, retrying in {self.retry_delay} seconds...")
+                print(f"[{self.app}]: Server is down / not started yet, retrying in {self.retry_delay} seconds...")
                 time.sleep(self.retry_delay)
         else:
             print(f"[{self.app}]: Failed to connect to the Server after {self.max_retries} attempts ###")
@@ -115,18 +115,33 @@ class Client:
     def send(self, message):
         # actual sending of the data to the server
         print(f"[{self.app}]: Sending message: {message} to Server ..")
-        self.client_socket.sendall(message.encode())
-        print(f"[{self.app}]: Message was sent")
-        self.connection_store.setdefault(self.index,[]).append(message)
+        try:
+            self.client_socket.sendall(message.encode())
+        except Exception as ee: # (BrokenPipeError, ConnectionResetError, ):
+            print(f"[{self.app}]: Connection lost. Received error: {ee}, Server may have crashed.")
+            return False
+        else:
+            print(f"[{self.app}]: Message was sent")
+            self.connection_store.setdefault(self.index,[]).append(message)
+            return True
 
     def _receive(self):
         # Client waits to get the answer from the server
         # we need to define MAX bytes we allow to extract from the socket - here we say max 1024 bytes (1K) if will be less ok
         print(f"[{self.app}]: Waiting for response from the server ...")
-        received_data = self.client_socket.recv(self.MAX_DATA_SIZE).decode()  # blocking operation, client will not send next message before he got respond to the current message
-        print(f"[{self.app}]: Received message from the server: <{received_data}>")
-        self.connection_store.setdefault(self.index, []).append(received_data)
-        self.index += 1
+        try:
+            received_data = self.client_socket.recv(self.MAX_DATA_SIZE).decode()  # blocking operation, client will not send next message before he got respond to the current message
+            if not received_data:
+                print(f"[{self.app}]: No received data, probably Server closed the connection")
+                return False
+        except Exception as ee:
+            print(f"[{self.app}]: Receive has failed, error: {ee}, probably Server failed")
+            return False
+        else:
+            print(f"[{self.app}]: Received message from the server: <{received_data}>")
+            self.connection_store.setdefault(self.index, []).append(received_data)
+            self.index += 1
+            return True
 
     def start(self):
         """
@@ -145,10 +160,12 @@ class Client:
             if not message:
                 print(f"[{self.app}]: Empty message is ignored")
             else:
-                self.send(message) # send any message to server (either 'q' or not, as message 'q' tels the server to finish)
+                if not self.send(message):
+                    return  # send any message to server (either 'q' or not, as message 'q' tels the server to finish)
                 if message == 'q':
                     return
-                self._receive()
+                if not self._receive():
+                    return
 
     def disconnect(self):
         print(f"[{self.app}]: Closing the SOCKET (connection) ....")
