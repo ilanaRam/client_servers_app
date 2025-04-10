@@ -121,7 +121,7 @@ class Server:
         # then server will be stacked waiting for messages from connected client
         print(f"[SERVER]: is paused until client arrives ...")
         self.client_socket, client_address = self.server_socket.accept()
-        print(f"[{self.app}]: Connection is established with client ip address: {client_address}, type: {type(self.client_socket)}")
+        print(f"[{self.app}]: Connection is established with client ip address: {client_address}, type: {type(self.client_socket)} !!!!!!")
 
         # 7. create 2 different procs to handle receive and process of the messages from a client
         print(f"[{self.app}]: Creating 2 parallel server activities: receive_client_messages, process_client_messages ...")
@@ -173,6 +173,7 @@ class Server:
                 print(f"[{self.app}]: client - seems like failed")
                 print(f"[{self.app}]: Thread - finished")
                 break
+
     def _process_messages(self) -> None:
         """
         Looping the server queue, once new message entered, retrieve and respond
