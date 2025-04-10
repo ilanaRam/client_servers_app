@@ -118,7 +118,7 @@ class Client:
         try:
             self.client_socket.sendall(message.encode())
         except Exception as ee: # (BrokenPipeError, ConnectionResetError, ):
-            print(f"[{self.app}]: Connection lost. Received error: {ee}, Server may have crashed.")
+            print(f"[{self.app}]: Connection lost. Received error: {ee}, Server may have crashed/disconnected.")
             return False
         else:
             print(f"[{self.app}]: Message was sent")

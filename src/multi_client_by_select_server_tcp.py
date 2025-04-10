@@ -145,7 +145,7 @@ class Server:
         # adding new client socket to the list, next time this client will send messages -> server will know it
         # without adding to the list, server will not notice messages from this connection
         self.monitored_client_sockets_list.append(client_socket)
-        print(Fore.LIGHTGREEN_EX + f"{[self.app]}: new Client connection: IP: {client_address}, was added to the list of monitored sockets")
+        print(Fore.LIGHTGREEN_EX + f"{[self.app]}: new Client connection: IP: {client_address}, was added to the list of monitored sockets !!!!!")
         # we also store client sockets for loging, debug, ...
         self.all_clients[client_socket] = client_address
 
