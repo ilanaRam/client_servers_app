@@ -135,8 +135,7 @@ class MockServer:
         server_socket.listen(1)  # Allow 1 client
         return server_socket
 
-    def mock_echo_server_crashes_after_connection(self,
-                                                  mock_server_app, ip, port, cert_file, key_file):
+    def mock_echo_server_crashes_after_connection(self, mock_server_app, ip, port, cert_file, key_file):
 
         self.server_socket = self.prepare_echo_mock_server_socket(mock_server_app=mock_server_app,
                                                                   ip=ip, port=port, cert_file=cert_file, key_file=key_file)
