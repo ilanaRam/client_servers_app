@@ -23,10 +23,11 @@ class Client:
         # self.port: Final[int] = 8820 if not port else port
 
         self.client_socket = None
+        self.context = None
         self.connection_store = {}
         self.index = 0
 
-        ip, port, max_retries, retry_delay, max_data_size = self._init()
+        ip, port, max_retries, retry_delay, max_data_size = self._get_configuration()
         self.IP: Final[str] =  ip  # also possible to do: socket.gethostbyname(socket.gethostname())  # <---- this way we determine the local host address, this way -> we set it hard codded: "127.0.0.1" if not ip else ip
         print(f"[{self.app}]: app is executed using the next parameters: ")
         print(f"[{self.app}]: IP: {self.IP}")
@@ -43,6 +44,8 @@ class Client:
         self.MAX_DATA_SIZE = max_data_size
         print(f"[{self.app}]: Max data size: {self.MAX_DATA_SIZE}")
 
+        self._find_certifications_create_ssl_context()
+
         self._connect()
 
     def _find_full_file_path(self, my_path, my_file):
@@ -52,7 +55,7 @@ class Client:
                 return full_file_path
         return None  # Return None if not found
 
-    def _init(self):
+    def _get_configuration(self):
         full_path_to_file = self._find_full_file_path(Path.cwd().parent,"client_config.yaml")
         if not full_path_to_file:
             raise FileExistsError
@@ -66,51 +69,59 @@ class Client:
                    config["client"]["retry_delay"], \
                    config["client"]["max_data_size"]
 
-    def _connect(self):
-        # 1. create client 'regular' socket - this operation has nothing to do with Server (it doesnt requires a Server be connected)
-        print(f"\n\n[{self.app}]: Creating the 'regular' socket ...")
-        self.client_socket = socket.socket(socket.AF_INET,     # this means we use protocol IP (our socket will expect to connect between 2 IP addresses
-                                           socket.SOCK_STREAM) # this means we use protocol TCP (in charge of reliable connection)
-        print(f"[{self.app}]: 'regular' socket ... created")
-
-        # 2. creating a context object that holds all relevant settings and configurations related to SSL/TLS secured connection
+    def _find_certifications_create_ssl_context(self):
+        # creating a context object that holds all relevant settings and configurations related to SSL/TLS secured connection
         print(f"[{self.app}]: Creating the secured SSL context (set of rules for secure connection) ...")
         full_path_to_cert_file = self._find_full_file_path(Path.cwd().parent, "ilana_cert_01.pem")
         if not full_path_to_cert_file:
             raise FileExistsError
         print(f"[{self.app}]: Loading cert from file: {full_path_to_cert_file}")
         # context = ssl.create_default_context() # <--- if I do it this way, I actually tell client to accept any cert from server, while server will by default create self signed certificate that will be by default rejected by python ssl so I need tell Client that will be sent specific self signed cert from server and please deal only with this one
-        context = ssl.create_default_context(cafile=full_path_to_cert_file)# <--- if I do it this way, I actually tell client to verify specific self signed certificate
+        self.context = ssl.create_default_context(cafile=full_path_to_cert_file)  # <--- if I do it this way, I actually tell client to verify specific self signed certificate
         print(f"[{self.app}]: default SSL context ... created")
 
         # since we use self-signed certificate, which is default, by default python ssl module will reject it so we must handle it:
         # Disable hostname verification, it is good while testing but in production we must replace this with: True
-        context.check_hostname = False
+        self.context.check_hostname = False
         # this way we say: allow only this cert: 'certs/ilana_cert_01.pem',  or we can use ssl.CERT_NONE to make Client not check certificate at all
-        context.load_verify_locations(full_path_to_cert_file)
+        self.context.load_verify_locations(full_path_to_cert_file)
         # context.verify_mode = ssl.CERT_NONE # Accept any certificate, it is good while testing but in production we must replace this with: CERT_REQUIRED
 
-        print(f"[{self.app}]: Wrapping 'regular' socket with SSL")
-        self.client_socket = context.wrap_socket(self.client_socket,server_hostname=self.IP) # if we set flag: context.check_hostname = False Server IP will not be checked
-        print(f"[{self.app}]: socket is wrapped with TLS/SSL, TLS version is: {self.client_socket.version()}")
+    def _connect(self):
+        print(f"\n\n[{self.app}]: Creating socket loop - started")
 
-        # the correct order is:
-        # 0. create ssl context
-        # 1. create 'regular' socket
-        # 2. wrap socket with ssl
         for connect_attempt in range(1, self.max_retries + 1):
+            # 1. create client 'regular' socket - this operation has nothing to do with Server (it doesnt requires a Server be connected)
+            print(f"\n\n[{self.app}]: Attempt {connect_attempt}\nCreating the 'regular' socket ...")
+            self.client_socket = socket.socket(socket.AF_INET,     # this means we use protocol IP (our socket will expect to connect between 2 IP addresses
+                                               socket.SOCK_STREAM) # this means we use protocol TCP (in charge of reliable connection)
+            print(f"[{self.app}]: 'regular' socket ... created")
+
+            # 2. wrapping regular socket to be secured socket
+            print(f"[{self.app}]: Wrapping 'regular' socket with SSL")
+            self.client_socket = self.context.wrap_socket(self.client_socket,
+                                                          server_hostname=self.IP) # if we set flag: context.check_hostname = False Server IP will not be checked
+            print(f"[{self.app}]: socket is wrapped with TLS/SSL, TLS version is: {self.client_socket.version()}")
+
             print(f"[{self.app}]: Attempting to connect Client to Server [{connect_attempt}], ip: {self.IP}, port: {self.PORT} ...")
             # 3. connect server - here socket already need to be ssl socket as Server side expects ssl socket !
             try:
+                # to make connect is like to make a call, when we do it we actually do 2 things:
+                # 1. call - so here we check if we can make a call
+                # 2. check if we call to correct person - we need to check if the call is performed with the correct person
+                # so the except must check these 2 things
                 self.client_socket.connect((self.IP, self.PORT))
                 print(f"[{self.app}]: Connected to the Server successfully !")
                 break
-            except (ConnectionRefusedError, socket.timeout):
-                print(f"[{self.app}]: Server is down / not started yet, retrying in {self.retry_delay} seconds...")
+            except (ConnectionRefusedError, socket.timeout, # here we check if call could be performed at all, if person picked up
+                    ssl.SSLError):                          # here we check if the correct person picked up and not any person picked up
+                print(f"[{self.app}]: Client connection failed due to: Server isn't running, Client will retry to connect in {self.retry_delay} seconds...")
+                self.client_socket.close() # if connection failed, we must release the socket by socket.close !!, in any way we create new socket after failure.
                 time.sleep(self.retry_delay)
         else:
             print(f"[{self.app}]: Failed to connect to the Server after {self.max_retries} attempts ###")
-            exit(1)  # Exit if connection never succeeded
+            exit(1)  # means the connection is failed. Exit generates in the system exception: SystemExit that we can catch later - else system finishes the application.
+        print(f"[{self.app}]: It took {connect_attempt} attempts to connect a server")
 
     def send(self, message):
         # actual sending of the data to the server
@@ -173,10 +184,12 @@ class Client:
         print(f"[{self.app}]: SOCKET (connection) is closed")
 
     def print_sent_messages(self):
-        print(f"\n[{self.app}]: All the messages that were sent: Client -> Server\n"
+        if self.connection_store:
+            print(f"\n[{self.app}]: All the messages that were sent: Client -> Server\n"
               f"--------------------------------------------------------------------")
-        for index, messages_list in self.connection_store.items():
-            print(f"[{self.app}]: [{index}]: {messages_list}")
+            for index, messages_list in self.connection_store.items():
+                print(f"[{self.app}]: [{index}]: {messages_list}")
+                print(f"[{self.app}]: [{index}]: {messages_list}")
 
 # I added here a main just in case I wish to run the client directly and not from simpl_client_server_app.py
 if __name__ == '__main__':

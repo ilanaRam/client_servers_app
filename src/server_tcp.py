@@ -146,32 +146,25 @@ class Server:
         :return: None
         """
         while True:
-            print(f"[{self.app}]: process 'receive & store' is running ...")
+
             try:
-                # Several scenarios can be here: --------------------------------------------------------------------------------------------------------------------
-                # 1: if no incoming message (from a client), server is stack (blocked) and keeps on waiting
-                # 2: if incoming message is arrived, the recv() is releases and incoming message can be handled
-                # 3: if client closed connection properly (calls close() on its end), the recv() will be released on Server's side
-                #    and will return an empty string - Server will get the empty str and will close both (server + client) connection properly
-                # 4: if client connection was forcefully disconnected, recv() will return exception that we will catch,
-                #    still the Server will close both (server + client) connection properly
-                # --------------------------------------------------------------------------------------------------------------------------------------------------
-                data = self.client_socket.recv(self.MAX_DATA_SIZE) # its bad idea to do: data = self.client_socket.recv(self.MAX_DATA_SIZE).decode() as a data can be empty
-                if data: # even if 'q' we put in queue
-                    message_from_client = data.decode('utf-8')
-                    print(f"[{self.app}]: Received message from a client: <{message_from_client}>")
-                    self.client_messages_queue.put(message_from_client)
-                    # also if 'q' finish this thread (the other thread will finish as well)
-                    if message_from_client == 'q': # empty data (client disconnected forcibly) or message = 'q' (client sent disconnection message)
-                        print(f"[{self.app}]: client - disconnected")
-                        print(f"[{self.app}]: Server - finished")
-                        break
-                else: # if arrived empty data (=client disconnected forcibly) - we finish this thread + we need to make other thread to finish too, so we put in queue 'q'
-                    self.client_messages_queue.put('q')
-                    break
-            except ConnectionAbortedError as ee:
+                data = self.client_socket.recv(self.MAX_DATA_SIZE)
+                if not data: # treat empty message as if client sent 'q' and disconnected
+                    message = 'q'
+                else: # decode for sure not empty message
+                    message = data.decode('utf-8')
+            except (ConnectionError, ssl.SSLError, UnicodeDecodeError) as ee:
                 print(f"[{self.app}]: client - seems like failed")
                 print(f"[{self.app}]: Thread - finished")
+                self.client_messages_queue.put('q')  # <-- tell the other thread to stop too
+                break
+
+            print(f"[{self.app}]: Received message from a client: <{message}> (in case it is 'q' it means it could be empty message and replaced by the code for more convenience)")
+            self.client_messages_queue.put(message)
+
+            if message == 'q': # empty data (client disconnected forcibly) or message = 'q' (client sent disconnection message)
+                print(f"[{self.app}]: client - disconnected")
+                print(f"[{self.app}]: Server - finished")
                 break
 
     def _process_messages(self) -> None:
