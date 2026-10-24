@@ -171,6 +171,7 @@ class Client:
             if not message:
                 print(f"[{self.app}]: Empty message is ignored")
             else:
+                # pay attention: While loop finishes and start returns in 2 cases: 1. user asked to send 'q', 2. returned empty message from client (connection lost)
                 if not self.send(message):
                     return  # send any message to server (either 'q' or not, as message 'q' tels the server to finish)
                 if message == 'q':
@@ -189,7 +190,7 @@ class Client:
               f"--------------------------------------------------------------------")
             for index, messages_list in self.connection_store.items():
                 print(f"[{self.app}]: [{index}]: {messages_list}")
-                print(f"[{self.app}]: [{index}]: {messages_list}")
+
 
 # I added here a main just in case I wish to run the client directly and not from simpl_client_server_app.py
 if __name__ == '__main__':

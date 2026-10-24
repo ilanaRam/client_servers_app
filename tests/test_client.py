@@ -193,7 +193,7 @@ class TestClient:
     # since in pytest - we cannot use constructor (no test will be collected) we can use class attribute
     app: Final[str] = "ClientTest"
 
-    def test_client_where_server_crashes_after_connection(self):
+    def test_multi_client_where_server_crashes_after_connection(self):
         """
         FIXED
         This test checks that when Server is terminated (closed / crashed without closing sockets correctly) after connection with Client but before client send msg,
@@ -231,7 +231,7 @@ class TestClient:
         print(f"[{self.app}]: all the attempts to send msg from Client -> Mock server, expected to be resulted with False: \n{results_list}")
         assert all(not bool(item) for item in results_list)
 
-    def test_client_where_server_crashes_during_send_receive_session(self):
+    def test_multi_client_where_server_crashes_during_send_receive_session(self):
         res = None
         # prepare mock server params
         mock_server = MockServer()
@@ -261,7 +261,7 @@ class TestClient:
         print(f"[{self.app}]: failed attempts to send msg from Client -> Mock server: {results_list.count(False)}")
         assert results_list.count(False) != 0
 
-    def test_client_single_message_send(self):
+    def test_multi_client_single_message_send(self):
         """Test that the client sends and receives the correct message."""
         # prepare mock server params
         mock_server = MockServer()
@@ -281,7 +281,7 @@ class TestClient:
             mock_server_process.join()
         assert response
 
-    def test_client_gives_up_after_max_retries(self):
+    def test_multi_client_gives_up_after_max_retries(self):
         """
         Test that when no server is listening at all, the Client exhausts every
         connection attempt (max_retries) and then gives up (exit(1)) instead of
@@ -325,7 +325,7 @@ class TestClient:
                                       name='MULTI_CLIENT_SERVER')
         multi_client_server.start()
 
-        print(f"[{self.app}]: Starting single client to run and send messages to selver")
+        print(f"[{self.app}]: Starting single client to run and send messages to server")
         msg = "Hello Server - I am single client"
         try:
             client_obj = Client()
@@ -354,7 +354,6 @@ class TestClient:
                 multi_client_server.terminate()
                 # termination takes time so we cannot to exit right away we need to wait - therefore we need join
                 multi_client_server.join()
-
 
     def test_multi_client_server_shuts_down_after_all_clients_are_quit(self):
         """
@@ -405,7 +404,81 @@ class TestClient:
                 # termination takes time so we cannot to exit right away we need to wait - therefore we need join
                 multi_client_server.join()
 
-    def test_client_start_client_server_yet_running(self):
+    def test_multi_client_where_client_quits_after_sending_q(self, monkeypatch): # 1. we bring pytest feature to fake things, called: monkeypatch
+        print(f"[{self.app}]: Test does: creates client -> connects server -> sends q and quits without waiting for any reply from a server")
+
+        my_client = None
+        receive_method_cnt = [] # count how many times the fake function (that replaced the _receive() method (1 time only)) was called
+
+        # ------------  PREPARING ALL I NEED FOR FAKING ---------------
+        # to be called instead of my_client._receive()
+        # "the real _receive() will not run; the spy runs instead".
+        # it must return something, else Python returns None which is treated as False and start() finishes. It is clearer to return True
+        def spy_receive():
+            receive_method_cnt.append(1)
+            return True
+
+        # when we call .start() the While loop starts, it will run till the user enter 'q', this is what is replaced by a list - the user's keyboard inputs.
+        # 2. here we use monkeypatch and we list all the replacements - each time input() will be called it will be replaced with item from this list
+        fake_inputs_list = iter(["hello",  # call 1 to input() will be replaced by "hello"
+                                 "how are you",  # call 2 to input() will be replaced by "how are you"
+                                 "I am your Client",  # call 3 to input() will be replaced by "I am your Client"
+                                 "q"])  # call 4 to input() will be replaced by "q" this ends the While True loop and returns to test
+
+        # here we come to set the monkey fake obj, to fake inputs from python built in api: builtins.input()
+        # we define (set) the list of the inputs that function if was there was supplying us with
+        monkeypatch.setattr("builtins.input",                    # method we come to replace by faked func, here we need where.what (where: builtins, what: input)
+                            lambda prompt="": next(fake_inputs_list))  # list simulates While True within start() API, start() is called 1 time only
+
+        print(f"[{self.app}]: Starting real multi client SERVER")
+        multi_client_server = Process(target=_start_multi_client_server,
+                                      args=(0,),
+                                      name='MULTI_CLIENT_SERVER')
+        multi_client_server.start()
+
+        print(f"[{self.app}]: Starting client to run and send messages to server")
+        try:
+            # Client() is constructor that also connects Client to Server
+            # this must be inside the try section in case the Avast antivirus will harm the connection
+            # if connection fails we jump to finally and there we finish all: the server and the client
+            my_client = Client()
+            
+            # this fake needs to be under 'try' only because it uses my_client that was defined under the try
+            # here we come to set another monkey fake obj, to fake my own API: _receive()
+            # why? because this way we will count number of time this func is called. in case of 'q' this func should not be called !
+            # we should patch (fake) the closest level, we can patch the Client class but it means all client in this test will be faked, so it is not best idea
+            monkeypatch.setattr(my_client,         # where: obj of class Client() is better to patch than the class Client
+                                "_receive",  # what: function _receive()
+                                spy_receive)       # to what faked func: spy_receive()
+            # method start() has inside it while True loop inside which the inputs are faked, sent to server and answered by it, only 'q' is sent and client does not wait for answer
+            my_client.start()
+            # start() can return due to 3 reasons:
+            # 1. send() returned FAIL (if not send())
+            # 2. client sent 'q', and did not wait to _receive()
+            # 3. we did not sent 'q', we got _receive() but it returned False
+
+
+            # in any way if start finished, we will expect server process to finish too so we wait
+            multi_client_server.join(timeout=10)
+            # lets take most resent indicator right here
+            flag = multi_client_server.is_alive()  # is_alive() = true only if server is still running
+            assert not flag  # this is the end of test: Flag = True test fails, Flag = False test passed, BUT the finally block will happen any way
+
+            my_client.print_sent_messages()
+            assert len(receive_method_cnt) == 3 # we faked 4 inputs but we expect _receive() to be called only 3 times
+        finally:
+            # here we do operations we need to do either way (either server finished ok or any one crashed
+            # Close server
+            if multi_client_server.is_alive():
+                multi_client_server.terminate()
+                # termination takes time so we cannot to exit right away we need to wait - therefore we need join
+                multi_client_server.join()
+
+            # this operation only releases client side socket and it has nothing to sdo with server - so it will not fail even if server already finished
+            if my_client is not None:
+                my_client.disconnect()
+
+    def test_multi_client_start_client_server_yet_running(self):
         """
         Client starts first - trying to connect not existing server, then server starts
         """
