@@ -173,8 +173,8 @@ class Client:
             else:
                 # pay attention: While loop finishes and start returns in 2 cases: 1. user asked to send 'q', 2. returned empty message from client (connection lost)
                 if not self.send(message):
-                    return  # send any message to server (either 'q' or not, as message 'q' tels the server to finish)
-                if message == 'q':
+                    return
+                if message == 'q': # in case q is sent by client to server, server will remove client and will not respond so _receive() at client side will not be called
                     return
                 if not self._receive():
                     return

@@ -281,7 +281,7 @@ class TestClient:
             mock_server_process.join()
         assert response
 
-    def test_multi_client_gives_up_after_max_retries(self):
+    def test_multi_client_no_server_client_gives_up_after_max_retries(self):
         """
         Test that when no server is listening at all, the Client exhausts every
         connection attempt (max_retries) and then gives up (exit(1)) instead of
@@ -442,7 +442,7 @@ class TestClient:
             # this must be inside the try section in case the Avast antivirus will harm the connection
             # if connection fails we jump to finally and there we finish all: the server and the client
             my_client = Client()
-            
+
             # this fake needs to be under 'try' only because it uses my_client that was defined under the try
             # here we come to set another monkey fake obj, to fake my own API: _receive()
             # why? because this way we will count number of time this func is called. in case of 'q' this func should not be called !
@@ -466,6 +466,91 @@ class TestClient:
 
             my_client.print_sent_messages()
             assert len(receive_method_cnt) == 3 # we faked 4 inputs but we expect _receive() to be called only 3 times
+        finally:
+            # here we do operations we need to do either way (either server finished ok or any one crashed
+            # Close server
+            if multi_client_server.is_alive():
+                multi_client_server.terminate()
+                # termination takes time so we cannot to exit right away we need to wait - therefore we need join
+                multi_client_server.join()
+
+            # this operation only releases client side socket and it has nothing to sdo with server - so it will not fail even if server already finished
+            if my_client is not None:
+                my_client.disconnect()
+
+    def test_multi_client_where_client_sends_empty_input(self, monkeypatch):
+        print(f"[{self.app}]: Test does: client gets EMPTY input, ignores it, then quits with q")
+
+        my_client = None
+        receive_method_cnt = []  # count how many times the fake function (that replaced the _receive() method (1 time only)) was called
+
+        # ------------  PREPARING ALL I NEED FOR FAKING ---------------
+        # to be called instead of my_client._receive()
+        # "the real _receive() will not run; the spy runs instead".
+        # it must return something, else Python returns None which is treated as False and start() finishes. It is clearer to return True
+        def spy_receive():
+            receive_method_cnt.append(1)
+            return True
+
+        # when we call .start() the While loop starts, it will run till the user enter 'q', this is what is replaced by a list - the user's keyboard inputs.
+        # 2. here we use monkeypatch and we list all the replacements - each time input() will be called it will be replaced with item from this list
+        fake_inputs_list = iter(["",    # "" is ignored by client and is not even sent to server side. no send(), no _receive().
+                                 "q"])  # "q" is sent and start() returns without waiting for a reply.
+
+        # here we come to set the monkey fake obj, to fake inputs from python built in api: builtins.input()
+        # we define (set) the list of the inputs that function if was there was supplying us with
+        monkeypatch.setattr("builtins.input",
+                            # method we come to replace by faked func, here we need where.what (where: builtins, what: input)
+                            lambda prompt="": next(fake_inputs_list))  # list simulates While True within start() API, start() is called 1 time only
+
+        print(f"[{self.app}]: Starting real multi client SERVER")
+        multi_client_server = Process(target=_start_multi_client_server,
+                                      args=(0,),
+                                      name='MULTI_CLIENT_SERVER')
+        multi_client_server.start()
+
+        print(f"[{self.app}]: Starting client to run and send messages to server")
+        try:
+            # Client() is constructor that also connects Client to Server
+            # this must be inside the try section in case the Avast antivirus will harm the connection
+            # if connection fails we jump to finally and there we finish all: the server and the client
+            my_client = Client()
+
+            # this fake needs to be under 'try' only because it uses my_client that was defined under the try
+            # here we come to set another monkey fake obj, to fake my own API: _receive()
+            # why? because this way we will count number of time this func is called. in case of 'q' this func should not be called !
+            # we should patch (fake) the closest level, we can patch the Client class but it means all client in this test will be faked, so it is not best idea
+            monkeypatch.setattr(my_client,  # where: obj of class Client() is better to patch than the class Client
+                                "_receive",  # what: function _receive()
+                                spy_receive)  # to what faked func: spy_receive()
+            # method start() has inside it while True loop inside which the inputs are faked, sent to server and answered by it, only 'q' is sent and client does not wait for answer
+            my_client.start()
+            # start() can return due to 3 reasons:
+            # 1. send() returned FAIL (if not send())
+            # 2. client sent 'q', and did not wait to _receive()
+            # 3. we did not sent 'q', we got _receive() but it returned False
+
+            # in any way if start finished, we will expect server process to finish too so we wait
+            multi_client_server.join(timeout=10)
+            # lets take most resent indicator right here
+            flag = multi_client_server.is_alive()  # is_alive() = true only if server is still running
+            assert not flag  # this is the end of test: Flag = True test fails, Flag = False test passed, BUT the finally block will happen any way
+
+            my_client.print_sent_messages()
+            assert len(receive_method_cnt) == 0  # we faked 2 inputs, we expect _receive() not to be called at all
+
+            # my_client.connection_store is a dict where each index is 1 round of send and receive. In case 'q' was sent there will not be receive
+            # exp in case only "q" was sent by client: dict will show this: [0]: ['q']
+            # exp if client sent few messages then 'q':
+            #       {0: ['hello',       'Hello, client! I received your message: hello.'],
+            #        1: ['how are you', 'Hello, client! I received your message: how are you.'],
+            #        2: ['q']}
+            #        round number    [what was sent, what came back]
+            # every client manages it's own connection_store dict !!
+
+            assert len(my_client.connection_store) == 1
+            assert "" not in my_client.connection_store[0]
+            assert "q" in my_client.connection_store[0] # or ask this way: my_client.connection_store == {0: ['q']}
         finally:
             # here we do operations we need to do either way (either server finished ok or any one crashed
             # Close server
@@ -518,4 +603,76 @@ class TestClient:
                 # termination takes time so we cannot to exit right away we need to wait - therefore we need join
                 multi_client_server.join()
 
+
+    # this test expected to fail - failure will be correct behaviour - to set the test to be failure correct test we must label it, to tell pytest - that is k, this test is correct to fail.
+    # incorrect will be not to fail - this is mark not a fixture - fixture gives the test something  (like monkeypatch), mark only labels it.
+
+    # Without strict (the default, strict=False)
+    # The test passes, and pytest shows a quiet XPASS ("unexpectedly passed"). It counts as OK and the run stays green. It's easy to miss.
+    # With strict=True
+    # The test passes, and pytest reports it as FAILED:
+    # [XPASS(strict)] no message framing: recv() reads at most max_data_size bytes
+    # The run turns red, so you can't miss it
+    @pytest.mark.xfail(reason="no message framing: recv() reads at most max_data_size bytes",
+                       raises=AssertionError, # count only a failure of the message length as normal acceptable failure, any other failures (assertions) treat regularly as failing this test
+                       strict=True)           # strict=True means: "I expect this to fail; if it passes, tell me loudly, so I know to remove the marker."
+    def test_multi_client_send_message_longer_than_max_data_size(self):
+        """
+        Both sides read at most 1024 bytes. (max_data_size in both configs), and the protocol has no way to mark where one message ends. So a long message gets cut into pieces:
+        1. The client sends 6300 characters.
+        2. The server's recv(1024) instructs only the first 1024. It treats that piece as a full message and replies.
+        3. The reply repeats the message ("Hello, client! I received your message: " + message + "."), so it's longer than 1024 bytes. The client's _receive() gets only the first 1024 bytes of it.
+        4. The rest of the reply waits in the client's socket. On the next round, the client can read the leftover piece instead of the reply to its new message. From then on, replies and messages don't line up.
+        """
+        print(f"[{self.app}]: Test does: client sends message longer than allowed (1024)")
+
+        my_client = None
+        long_msg = "hellow" * 1050
+
+        print(f"[{self.app}]: Starting real multi client SERVER")
+        multi_client_server = Process(target=_start_multi_client_server,
+                                      args=(0,),
+                                      name='MULTI_CLIENT_SERVER')
+        multi_client_server.start()
+
+        print(f"[{self.app}]: Starting client to run and send messages to server")
+        try:
+            # Client() is constructor that also connects Client to Server
+            # this must be inside the try section in case the Avast antivirus will harm the connection
+            # if connection fails we jump to finally and there we finish all: the server and the client
+            my_client = Client()
+
+            # long message round (sent and replied by server)
+            my_client.send(long_msg)
+            my_client._receive()
+
+            # use my_client.connection_store to see the round (what sent, what received)
+            # my_client.connection_store is a dict where each index is 1 round of send and receive. In case 'q' was sent there will not be receive
+            # exp in case only "q" was sent by client: dict will show this: [0]: ['q']
+            # exp if client sent few messages then 'q':
+            #       {0: ['hello',       'Hello, client! I received your message: hello.'],
+            #        1: ['how are you', 'Hello, client! I received your message: how are you.'],
+            #        2: ['q']}
+            #        round number    [what was sent, what came back]
+            # every client manages it's own connection_store dict !!
+
+            assert len(my_client.connection_store) == 1
+            assert 0 in my_client.connection_store
+            assert long_msg in my_client.connection_store[0] # in send
+            # will fail as there is no long message in the received because server retrieves only 1024 bytes of the arrived client message
+            assert long_msg in my_client.connection_store[0][1] # in receive < ##################### THIS LINE GENERATES ASSERT THAT TEST treats as OK thanks to mark: xfail ############ >
+            # nothing will run after this line, test jumps directly to finally block ############# !!!!
+
+        finally:
+            # here we do operations we need to do either way (either server finished ok or any one crashed
+            # Close server
+            if multi_client_server.is_alive():
+                multi_client_server.terminate()
+                # termination takes time so we cannot to exit right away we need to wait - therefore we need join
+                multi_client_server.join()
+
+            # this operation only releases client side socket and it has nothing to sdo with server - so it will not fail even if server already finished
+            if my_client is not None:
+                my_client.disconnect()
+                my_client.print_sent_messages()
 
