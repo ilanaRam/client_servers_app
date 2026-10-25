@@ -620,10 +620,20 @@ class TestClient:
         """
         Both sides read at most 1024 bytes. (max_data_size in both configs), and the protocol has no way to mark where one message ends. So a long message gets cut into pieces:
         1. The client sends 6300 characters.
-        2. The server's recv(1024) instructs only the first 1024. It treats that piece as a full message and replies.
+        2. The server's recv(1024) reads only the first 1024. It treats that piece as a full message and replies.
         3. The reply repeats the message ("Hello, client! I received your message: " + message + "."), so it's longer than 1024 bytes. The client's _receive() gets only the first 1024 bytes of it.
         4. The rest of the reply waits in the client's socket. On the next round, the client can read the leftover piece instead of the reply to its new message. From then on, replies and messages don't line up.
         """
+
+        # I ran the test and this is what it did:
+        # ---------------------------------------------------
+        # 1. The client sent everything: all 6300 letters.
+        # 2. The server got only 1024 letters. Its message ends in "…hell", cut in the middle of a word.
+        # 3. The server's reply is 1065 bytes, and it ends with a ..
+        # 4. The client read only 1024 bytes of that reply. There is no . at the end, so the last 41 bytes were left in the socket.
+        # 5. The reply doesn't contain the whole long message, so line 664 fails. That's the expected failure, so the result is XFAIL ✅
+        # 6. finally ran: it disconnected the client and printed connection_store, where round [0] holds what was sent and what came back
+
         print(f"[{self.app}]: Test does: client sends message longer than allowed (1024)")
 
         my_client = None
