@@ -98,18 +98,21 @@ class Client:
             print(f"[{self.app}]: 'regular' socket ... created")
 
             # 2. wrapping regular socket to be secured socket
-            print(f"[{self.app}]: Wrapping 'regular' socket with SSL")
+            print(f"[{self.app}]: Wrapping 'regular' socket with SSL - the next operation does nothing to do with server or a connection, it only makes the client socket to be secured \ no real connection exists yet")
             self.client_socket = self.context.wrap_socket(self.client_socket,
                                                           server_hostname=self.IP) # if we set flag: context.check_hostname = False Server IP will not be checked
-            print(f"[{self.app}]: socket is wrapped with TLS/SSL, TLS version is: {self.client_socket.version()}")
+            print(f"[{self.app}]: socket is wrapped with TLS/SSL")
 
             print(f"[{self.app}]: Attempting to connect Client to Server [{connect_attempt}], ip: {self.IP}, port: {self.PORT} ...")
-            # 3. connect server - here socket already need to be ssl socket as Server side expects ssl socket !
+            # 3. connect  - this method does the whole work:
+            # (here socket already has to be ssl socket (to have a password = to be secured) - because Server side expects ssl socket)
+            # connect means: (make a call or like to knock the door), when we do it we actually do 2 things:
+            # 1. call - so here we check if we can make a call
+            # 2. check if we call to correct person - we need to check if the call is performed with the correct person
+            # when client connects server (knocks server) the Operating System automatically answers it, only after it my server waits for a socket password, supplied by TLS.
+            # if server accepts this connection - connection is established using secured connection.
+            # so the except must check these 2 things
             try:
-                # to make connect is like to make a call, when we do it we actually do 2 things:
-                # 1. call - so here we check if we can make a call
-                # 2. check if we call to correct person - we need to check if the call is performed with the correct person
-                # so the except must check these 2 things
                 self.client_socket.connect((self.IP, self.PORT))
                 print(f"[{self.app}]: Connected to the Server successfully !")
                 break

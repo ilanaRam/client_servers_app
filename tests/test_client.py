@@ -631,7 +631,7 @@ class TestClient:
         # 2. The server got only 1024 letters. Its message ends in "…hell", cut in the middle of a word.
         # 3. The server's reply is 1065 bytes, and it ends with a ..
         # 4. The client read only 1024 bytes of that reply. There is no . at the end, so the last 41 bytes were left in the socket.
-        # 5. The reply doesn't contain the whole long message, so line 664 fails. That's the expected failure, so the result is XFAIL ✅
+        # 5. The reply doesn't contain the whole long message, so line: assert long_msg in my_client.connection_store[0][1] generates assert. That's the expected failure, so the result is XFAIL ✅
         # 6. finally ran: it disconnected the client and printed connection_store, where round [0] holds what was sent and what came back
 
         print(f"[{self.app}]: Test does: client sends message longer than allowed (1024)")
