@@ -98,7 +98,7 @@ class Client:
             print(f"[{self.app}]: 'regular' socket ... created")
 
             # 2. wrapping regular socket to be secured socket
-            print(f"[{self.app}]: Wrapping 'regular' socket with SSL - the next operation does nothing to do with server or a connection, it only makes the client socket to be secured \ no real connection exists yet")
+            print(f"[{self.app}]: Wrapping 'regular' socket with SSL - the next operation does nothing to do with server or a connection, it only makes the client socket to be secured (no real connection exists yet)")
             self.client_socket = self.context.wrap_socket(self.client_socket,
                                                           server_hostname=self.IP) # if we set flag: context.check_hostname = False Server IP will not be checked
             print(f"[{self.app}]: socket is wrapped with TLS/SSL")
